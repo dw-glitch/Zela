@@ -3,79 +3,144 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b6b5c">
-  <meta name="description" content="Painel operacional pessoal para ACS, complementar ao e-SUS Território.">
+  <meta name="theme-color" content="#176b5b">
+  <meta name="description" content="Zela: painel visual para organizar o território e localizar rapidamente pessoas para visita.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <title>Território ACS — Maria Beatriz</title>
+  <title>Zela</title>
 </head>
 <body>
   <a class="skip" href="#main">Pular para o conteúdo</a>
-  <div id="offlineBanner" class="offline" hidden>Você está offline. O aplicativo continua funcionando localmente.</div>
+  <div id="offlineBanner" class="offline" hidden>Sem internet. O painel continua disponível neste dispositivo.</div>
+
   <header class="topbar">
-    <div>
-      <div class="eyebrow" id="microareaLabel">MICROÁREA A DEFINIR</div>
-      <h1>Território ACS</h1>
-      <div class="sub">PESSOAL · Maria Beatriz</div>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">Z</div>
+      <div>
+        <h1>Zela</h1>
+        <p>Painel rápido do território</p>
+      </div>
     </div>
-    <button id="lockBtn" class="ghost" type="button" aria-label="Bloquear aplicativo">Bloquear</button>
+    <div id="microareaLabel" class="microarea">MICROÁREA —</div>
   </header>
 
   <main id="main" tabindex="-1">
-    <section id="view-hoje" class="view active" data-view="hoje">
-      <div class="status-card" id="dataStatus">⌁ Nenhuma base importada. Comece em Dados → Importar CSV.</div>
-      <div class="hero-card">
-        <div><span class="eyebrow">HOJE</span><h2 id="hello">Olá, Maria Beatriz</h2><p id="todayDate"></p></div>
-        <button id="planBtn" class="primary" type="button">Planejar meu dia</button>
+    <section id="view-painel" class="view active" data-view="painel">
+      <div class="welcome-row">
+        <div>
+          <span class="eyebrow">VISÃO DO DIA</span>
+          <h2 id="hello">Olá, Maria Beatriz</h2>
+          <p id="todayDate" class="muted"></p>
+        </div>
+        <button id="importTopBtn" class="icon-button" type="button" aria-label="Importar CSV">＋</button>
       </div>
-      <div class="metrics" id="metrics"></div>
-      <section class="panel"><div class="panel-head"><h2>Prioridades</h2><button class="link" data-go="alertas">Ver todas</button></div><div id="priorityList" class="stack empty-state">Importe uma base ou carregue a demonstração.</div></section>
+
+      <div id="dataStatus" class="data-status">
+        Nenhuma base importada. Toque em + para carregar o CSV.
+      </div>
+
+      <div id="visitMetrics" class="visit-metrics"></div>
+
+      <section class="panel focus-panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">PRIORIDADE VISUAL</span>
+            <h3 id="focusTitle">Quem olhar primeiro</h3>
+          </div>
+          <button class="text-button" data-go="visitas" type="button">Ver lista</button>
+        </div>
+        <div id="focusList" class="stack"></div>
+      </section>
+
+      <section class="panel compact-panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">TERRITÓRIO</span>
+            <h3>Ruas com mais pessoas</h3>
+          </div>
+        </div>
+        <div id="streetSummary" class="street-list"></div>
+      </section>
     </section>
 
-    <section id="view-alertas" class="view" data-view="alertas">
-      <div class="section-head"><div><span class="eyebrow">CENTRAL</span><h2>Alertas</h2></div><input id="alertSearch" class="search" type="search" placeholder="Buscar alerta ou pessoa" aria-label="Buscar alertas"></div>
-      <div class="chips" id="alertFilters"></div>
-      <div id="alertsList" class="stack empty-state">Nenhum alerta calculado.</div>
+    <section id="view-visitas" class="view" data-view="visitas">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">VISITAS</span>
+          <h2>Encontre rápido</h2>
+        </div>
+      </div>
+      <input id="visitSearch" class="search full" type="search" placeholder="Buscar nome ou rua" aria-label="Buscar pessoa para visita">
+      <div id="visitFilters" class="chips"></div>
+      <div id="visitList" class="stack"></div>
     </section>
 
     <section id="view-pessoas" class="view" data-view="pessoas">
-      <div class="section-head"><div><span class="eyebrow">CADASTRO</span><h2>Pessoas</h2></div><input id="peopleSearch" class="search" type="search" placeholder="Nome, CPF ou CNS" aria-label="Buscar pessoas"></div>
-      <div id="peopleList" class="stack empty-state">Nenhuma pessoa carregada.</div>
-    </section>
-
-    <section id="view-roteiro" class="view" data-view="roteiro">
-      <div class="section-head"><div><span class="eyebrow">PLANEJAMENTO</span><h2>Roteiro</h2></div><button id="clearRoute" class="ghost" type="button">Limpar</button></div>
-      <div class="notice">Estados do roteiro são organizacionais e não substituem o registro oficial no e-SUS Território.</div>
-      <div id="routeSummary" class="metrics compact"></div>
-      <div id="routeList" class="stack empty-state">Use “Planejar meu dia” para montar o roteiro.</div>
-    </section>
-
-    <section id="view-mais" class="view" data-view="mais">
-      <div class="section-head"><div><span class="eyebrow">FERRAMENTAS</span><h2>Mais</h2></div></div>
-      <div class="menu-grid">
-        <button class="menu-card" data-more="territorio"><b>Meu território</b><span>Ruas, famílias e concentração de pendências</span></button>
-        <button class="menu-card" data-more="familias"><b>Famílias</b><span>Responsáveis e membros por núcleo</span></button>
-        <button class="menu-card" data-more="indicadores"><b>Indicadores</b><span>Resumo operacional sem ranking</span></button>
-        <button class="menu-card" data-more="dados"><b>Dados</b><span>Importar CSV, histórico e qualidade</span></button>
-        <button class="menu-card" data-more="config"><b>Configurações</b><span>Privacidade, bloqueio e armazenamento</span></button>
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">PESSOAS</span>
+          <h2>Todo o território</h2>
+        </div>
       </div>
-      <div id="morePanel" class="panel more-panel"></div>
+      <input id="peopleSearch" class="search full" type="search" placeholder="Buscar nome, rua, CPF ou CNS" aria-label="Buscar pessoas">
+      <div id="peopleList" class="stack"></div>
+    </section>
+
+    <section id="view-dados" class="view" data-view="dados">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">DADOS</span>
+          <h2>Importar e conferir</h2>
+        </div>
+      </div>
+
+      <section class="import-card">
+        <div class="import-icon">↑</div>
+        <h3>Importar relatório</h3>
+        <p>O arquivo é processado no navegador. Nenhum CSV é enviado para serviços externos.</p>
+        <button id="importNow" class="primary" type="button">Escolher CSV</button>
+        <button id="loadDemo" class="secondary" type="button">Ver demonstração</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">FORMATO IDENTIFICADO</span>
+            <h3>Leitura do arquivo</h3>
+          </div>
+        </div>
+        <div id="formatInfo" class="format-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">IMPORTAÇÕES</span>
+            <h3>Último arquivo</h3>
+          </div>
+        </div>
+        <div id="importHistory" class="muted">Nenhuma importação nesta sessão.</div>
+      </section>
     </section>
   </main>
 
   <nav class="bottom-nav" aria-label="Navegação principal">
-    <button class="nav-item active" data-view-target="hoje"><span>⌂</span><b>Hoje</b></button>
-    <button class="nav-item" data-view-target="alertas"><span>!</span><b>Alertas</b></button>
-    <button class="nav-item" data-view-target="pessoas"><span>◉</span><b>Pessoas</b></button>
-    <button class="nav-item" data-view-target="roteiro"><span>✓</span><b>Roteiro</b></button>
-    <button class="nav-item" data-view-target="mais"><span>•••</span><b>Mais</b></button>
+    <button class="nav-item active" data-view-target="painel" type="button"><span>⌂</span><b>Painel</b></button>
+    <button class="nav-item" data-view-target="visitas" type="button"><span>◎</span><b>Visitas</b></button>
+    <button class="nav-item" data-view-target="pessoas" type="button"><span>◉</span><b>Pessoas</b></button>
+    <button class="nav-item" data-view-target="dados" type="button"><span>↑</span><b>Dados</b></button>
   </nav>
 
-  <dialog id="detailDialog"><form method="dialog"><button class="dialog-close" aria-label="Fechar">×</button><div id="detailContent"></div></form></dialog>
-  <dialog id="lockDialog" class="lock-dialog"><form method="dialog"><h2>Aplicativo bloqueado</h2><p>Os dados da sessão foram ocultados. Digite o PIN local para desbloquear.</p><input id="pinInput" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="PIN"><p id="pinError" class="error" aria-live="polite"></p><button id="unlockBtn" class="primary" value="cancel" type="button">Desbloquear</button></form></dialog>
-  <input id="csvInput" type="file" accept=".csv,text/csv" hidden multiple>
+  <dialog id="detailDialog">
+    <form method="dialog">
+      <button class="dialog-close" aria-label="Fechar">×</button>
+      <div id="detailContent"></div>
+    </form>
+  </dialog>
+
+  <input id="csvInput" type="file" accept=".csv,text/csv" hidden>
   <script type="module" src="src/app.js"></script>
 </body>
 </html>
