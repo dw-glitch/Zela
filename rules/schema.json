@@ -1,0 +1,13 @@
+{
+  "required": [
+    "id",
+    "name",
+    "enabled",
+    "type"
+  ],
+  "types": [
+    "data-quality",
+    "operational",
+    "official"
+  ]
+}

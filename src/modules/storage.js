@@ -1,0 +1,9 @@
+const DB='territorio-acs-secure',STORE='vault';
+function b64(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}function unb64(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0))}
+async function derive(pin,salt){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(pin),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:180000,hash:'SHA-256'},key,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+function db(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function put(k,v){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(STORE,'readwrite');t.objectStore(STORE).put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}
+async function get(k){const d=await db();return new Promise((res,rej)=>{const r=d.transaction(STORE).objectStore(STORE).get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+export async function saveEncrypted(pin,data){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await derive(pin,salt);const plain=new TextEncoder().encode(JSON.stringify(data));const enc=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain));await put('payload',{salt:b64(salt),iv:b64(iv),data:b64(enc)});return true}
+export async function loadEncrypted(pin){const rec=await get('payload');if(!rec)return null;const key=await derive(pin,unb64(rec.salt));const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(rec.iv)},key,unb64(rec.data));return JSON.parse(new TextDecoder().decode(plain))}
+export function clearVault(){return new Promise((res,rej)=>{const r=indexedDB.deleteDatabase(DB);r.onsuccess=res;r.onerror=()=>rej(r.error);r.onblocked=res})}

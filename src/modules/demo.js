@@ -1,0 +1,5 @@
+export const demoRows=[
+{name:'Ana Souza',birth:'14/02/1952',cpf:'12345678901',cns:'700000000000001',streetType:'RUA',street:'DAS FLORES',number:'12',district:'CENTRO',responsibleFlag:'SIM',responsibleId:'12345678901',responsibleName:'Ana Souza',sex:'FEMININO'},
+{name:'João Souza',birth:'03/06/2016',cpf:'',cns:'',streetType:'RUA',street:'DAS FLORES',number:'12',district:'CENTRO',responsibleFlag:'NÃO',responsibleId:'12345678901',responsibleName:'Ana Souza',sex:'MASCULINO'},
+{name:'Marina Lima',birth:'2025-01-30',cpf:'23456789012',cns:'700000000000002',streetType:'AVENIDA',street:'DO SOL',number:'88',district:'CENTRO',responsibleFlag:'SIM',responsibleId:'23456789012',responsibleName:'Marina Lima',sex:'FEMININO'},
+{name:'Carlos Nunes',birth:'',cpf:'34567890123',cns:'',streetType:'TRAVESSA',street:'DA PAZ',number:'7',district:'NORTE',responsibleFlag:'SIM',responsibleId:'34567890123',responsibleName:'Carlos Nunes',sex:'MASCULINO'}];

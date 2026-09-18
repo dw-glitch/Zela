@@ -1,0 +1,19 @@
+{
+  "notice": "Regras oficiais clínicas/periodicidades devem ser revisadas contra as fontes vigentes antes de ativação institucional.",
+  "rules": [
+    {
+      "id": "cadastro-24m",
+      "enabled": false,
+      "name": "Cadastro sem atualização nos últimos 24 meses",
+      "status": "desativada até existir campo de data de atualização confiável no relatório importado",
+      "source": "Guia oficial vigente a validar"
+    },
+    {
+      "id": "ivcf20",
+      "enabled": false,
+      "name": "IVCF-20",
+      "status": "desativada até existir relatório/colunas de avaliação e pontuação reconhecidas",
+      "source": "Fonte oficial vigente a validar"
+    }
+  ]
+}

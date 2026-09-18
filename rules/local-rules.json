@@ -1,0 +1,16 @@
+{
+  "rules": [
+    {
+      "id": "missing-identifiers",
+      "enabled": true,
+      "name": "Identificadores oficiais ausentes",
+      "type": "data-quality"
+    },
+    {
+      "id": "family-link",
+      "enabled": true,
+      "name": "Vínculo familiar incompleto",
+      "type": "data-quality"
+    }
+  ]
+}
