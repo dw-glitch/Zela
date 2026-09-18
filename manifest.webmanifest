@@ -10,10 +10,10 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "icons/icon-256.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "any"
+      "src": "assets/zela-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
