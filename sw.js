@@ -1,11 +1,11 @@
-const CACHE='zela-shell-v5';
+const CACHE='zela-shell-v6';
 const SHELL=[
   './',
   './index.html',
   './styles.css',
   './manifest.webmanifest',
-  './icons/icon-256.png',
-  './assets/zela-logo.png',
+  './assets/zela-mark.svg',
+  './assets/zela-logo.svg',
   './apple-touch-icon.png',
   './src/app.js',
   './src/modules/csv.js',
