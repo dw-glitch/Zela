@@ -1,11 +1,11 @@
 {
-  "name": "Território ACS — Maria Beatriz",
-  "short_name": "Território ACS",
-  "description": "Painel operacional pessoal complementar ao e-SUS Território.",
+  "name": "Zela",
+  "short_name": "Zela",
+  "description": "Painel visual do território para localizar rapidamente pessoas e organizar visitas a partir dos dados importados.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f4f7f6",
-  "theme_color": "#0b6b5c",
+  "background_color": "#f5f7f6",
+  "theme_color": "#176b5b",
   "lang": "pt-BR",
   "icons": [
     {
