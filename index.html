@@ -7,7 +7,9 @@
   <meta name="description" content="Zela: painel visual para organizar o território e localizar rapidamente pessoas para visita.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-256.png" type="image/png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preload" href="assets/zela-logo.png" as="image" type="image/png">
   <link rel="stylesheet" href="styles.css">
   <title>Zela</title>
 </head>
@@ -17,8 +19,8 @@
 
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true">Z</div>
-      <div>
+      <img class="brand-logo" src="assets/zela-logo.png" alt="Logo Zela">
+      <div class="brand-copy">
         <h1>Zela</h1>
         <p>Painel rápido do território</p>
       </div>
@@ -97,7 +99,7 @@
       </div>
 
       <section class="import-card">
-        <div class="import-icon">↑</div>
+        <img class="import-logo" src="assets/zela-logo.png" alt="" aria-hidden="true">
         <h3>Importar relatório</h3>
         <p>O arquivo é processado no navegador. Nenhum CSV é enviado para serviços externos.</p>
         <button id="importNow" class="primary" type="button">Escolher CSV</button>
