@@ -1,13 +1,12 @@
-const CACHE='zela-shell-v6';
+const CACHE='zela-shell-v7';
 const SHELL=[
   './',
   './index.html',
-  './styles.css',
-  './manifest.webmanifest',
-  './assets/zela-mark.svg',
-  './assets/zela-logo.svg',
-  './apple-touch-icon.png',
-  './src/app.js',
+  './styles.css?v=7',
+  './manifest.webmanifest?v=7',
+  './assets/zela-icon-192-v2.png',
+  './assets/zela-touch-180-v2.png',
+  './src/app.js?v=7',
   './src/modules/csv.js',
   './src/modules/model.js',
   './src/modules/demo.js'
@@ -34,15 +33,26 @@ self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url);
   if(url.origin!==location.origin)return;
 
-  event.respondWith(
-    caches.match(event.request).then(cached=>
-      cached||fetch(event.request).then(response=>{
-        if(['document','script','style','image','manifest'].includes(event.request.destination)){
+  if(event.request.mode==='navigate'){
+    event.respondWith(
+      fetch(event.request,{cache:'no-store'})
+        .then(response=>{
           const copy=response.clone();
-          caches.open(CACHE).then(cache=>cache.put(event.request,copy));
-        }
+          caches.open(CACHE).then(cache=>cache.put('./index.html',copy));
+          return response;
+        })
+        .catch(()=>caches.match('./index.html'))
+    );
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request,{cache:'no-store'})
+      .then(response=>{
+        const copy=response.clone();
+        caches.open(CACHE).then(cache=>cache.put(event.request,copy));
         return response;
-      }).catch(()=>caches.match('./index.html'))
-    )
+      })
+      .catch(()=>caches.match(event.request))
   );
 });

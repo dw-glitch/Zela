@@ -2,7 +2,7 @@
   "name": "Zela",
   "short_name": "Zela",
   "description": "Painel visual do território para localizar rapidamente pessoas e organizar visitas a partir dos dados importados.",
-  "start_url": "./",
+  "start_url": "./?pwa=7",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f5f7f6",
@@ -10,10 +10,16 @@
   "lang": "pt-BR",
   "icons": [
     {
+      "src": "assets/zela-icon-192-v2.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "assets/zela-mark.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

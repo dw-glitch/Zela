@@ -350,7 +350,17 @@ function init(){
   $('#todayDate').textContent=formatted.charAt(0).toUpperCase()+formatted.slice(1);
   bind();
   renderAll();
-  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  if('serviceWorker'in navigator){
+    let reloading=false;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(reloading)return;
+      reloading=true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js?v=7',{updateViaCache:'none'})
+      .then(registration=>registration.update())
+      .catch(()=>{});
+  }
   $('#offlineBanner').hidden=navigator.onLine;
 }
 

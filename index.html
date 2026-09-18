@@ -6,11 +6,10 @@
   <meta name="theme-color" content="#176b5b">
   <meta name="description" content="Zela: painel visual para organizar o território e localizar rapidamente pessoas para visita.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="assets/zela-mark.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="preload" href="assets/zela-mark.svg" as="image" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest?v=7">
+  <link rel="icon" href="assets/zela-icon-192-v2.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/zela-touch-180-v2.png">
+  <link rel="stylesheet" href="styles.css?v=7">
   <title>Zela</title>
 </head>
 <body>
@@ -19,7 +18,7 @@
 
   <header class="topbar">
     <div class="brand">
-      <img class="brand-logo" src="assets/zela-mark.svg" alt="Logo Zela">
+      <img class="brand-logo" src="assets/zela-icon-192-v2.png" alt="Logo Zela" width="58" height="58">
       <div class="brand-copy">
         <h1>Zela</h1>
         <p>Painel rápido do território</p>
@@ -99,7 +98,7 @@
       </div>
 
       <section class="import-card">
-        <img class="import-logo" src="assets/zela-logo.svg" alt="" aria-hidden="true">
+        <img class="import-logo" src="assets/zela-icon-192-v2.png" alt="Logo Zela" width="104" height="104">
         <h3>Importar relatório</h3>
         <p>O arquivo é processado no navegador. Nenhum CSV é enviado para serviços externos.</p>
         <button id="importNow" class="primary" type="button">Escolher CSV</button>
@@ -143,6 +142,6 @@
   </dialog>
 
   <input id="csvInput" type="file" accept=".csv,text/csv" hidden>
-  <script type="module" src="src/app.js"></script>
+  <script type="module" src="src/app.js?v=7"></script>
 </body>
 </html>
