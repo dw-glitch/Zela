@@ -550,3 +550,17 @@ dialog form{padding:20px}
   .brand-copy p{display:none}
   .import-logo{width:84px;height:84px}
 }
+
+/* Correção da marca: SVG sem o grande fundo branco da arte original */
+.brand-logo{
+  object-fit:contain;
+  background:transparent;
+  box-shadow:none;
+  border-radius:0;
+}
+.import-logo{
+  object-fit:contain;
+  background:transparent;
+  box-shadow:none;
+  border-radius:0;
+}
