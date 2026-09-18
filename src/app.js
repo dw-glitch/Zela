@@ -1,29 +1,357 @@
-import{parseFile}from'./modules/csv.js';import{buildPeople,buildFamilies,buildAlerts,maskId}from'./modules/model.js';import{demoRows}from'./modules/demo.js';import{saveEncrypted,loadEncrypted,clearVault}from'./modules/storage.js';
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const state={rows:[],people:[],families:[],alerts:[],route:[],imports:[],meta:{},mode:'session',pin:'',alertFilter:'todos'};
-const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-function recalc(){state.people=buildPeople(state.rows);state.families=buildFamilies(state.people);state.alerts=buildAlerts(state.people);renderAll()}
-function renderAll(){renderHeader();renderMetrics();renderAlerts();renderPeople();renderRoute();renderPriority();renderMore()}
-function renderHeader(){const m=state.meta.microarea?`MICROÁREA ${esc(state.meta.microarea)}`:'MICROÁREA A DEFINIR';$('#microareaLabel').innerHTML=m;$('#dataStatus').innerHTML=state.people.length?`Base ativa: <b>${state.people.length} pessoas</b> · ${state.families.length} famílias · processada somente neste dispositivo.`:'⌁ Nenhuma base importada. Comece em Dados → Importar CSV.'}
-function metric(n,l){return`<button class="metric" type="button" data-metric="${l}"><b>${n}</b><span>${l}</span></button>`}
-function renderMetrics(){$('#metrics').innerHTML=[metric(state.alerts.length,'Alertas'),metric(state.people.length,'Pessoas'),metric(state.route.length,'Roteiro'),metric(state.families.length,'Famílias')].join('')}
-function badge(a){const cls=a.state.includes('insuficientes')?'warn':a.priority>=70?'danger':'neutral';return`<span class="badge ${cls}">${esc(a.state)}</span>`}
-function alertCard(a){return`<button class="item" data-alert="${esc(a.id)}"><div class="item-top"><div><h3>${esc(a.title)}</h3><p>${esc(a.personName)} · ${esc(a.category)}</p></div>${badge(a)}</div><p>${esc(a.why)}</p></button>`}
-function renderPriority(){const el=$('#priorityList');el.classList.remove('empty-state');el.innerHTML=state.alerts.length?state.alerts.slice(0,5).map(alertCard).join(''):'<div class="empty-state">Nenhuma prioridade calculada.</div>'}
-function renderAlerts(){const q=($('#alertSearch')?.value||'').toLowerCase();let arr=state.alerts;if(state.alertFilter!=='todos')arr=arr.filter(a=>a.category===state.alertFilter||a.state===state.alertFilter);if(q)arr=arr.filter(a=>(a.title+' '+a.personName+' '+a.category+' '+a.why).toLowerCase().includes(q));$('#alertsList').classList.remove('empty-state');$('#alertsList').innerHTML=arr.length?arr.map(alertCard).join(''):'<div class="empty-state">Nenhum alerta com estes filtros.</div>'}
-function renderPeople(){const q=($('#peopleSearch')?.value||'').toLowerCase().replace(/\D/g,'');const qt=($('#peopleSearch')?.value||'').toLowerCase();let arr=state.people;if(qt)arr=arr.filter(p=>p.name.toLowerCase().includes(qt)||(q&&(p.cpf+p.cns).replace(/\D/g,'').includes(q)));$('#peopleList').classList.remove('empty-state');$('#peopleList').innerHTML=arr.length?arr.slice(0,250).map(p=>`<button class="item" data-person="${esc(p.key)}"><div class="item-top"><div><h3>${esc(p.name)}</h3><p>${esc(p.address||'Endereço não informado')}</p></div><span class="badge neutral">${p.age==null?'idade —':p.age+' anos'}</span></div><p>CPF: ${maskId(p.cpf)} · CNS: ${maskId(p.cns)}</p></button>`).join(''):'<div class="empty-state">Nenhuma pessoa encontrada.</div>'}
-function renderRoute(){const byStreet=new Set(state.route.map(r=>r.street).filter(Boolean));$('#routeSummary').innerHTML=metric(state.route.length,'Visitas')+metric(byStreet.size,'Ruas')+metric(state.route.filter(r=>r.status==='visitado').length,'Concluídas');$('#routeList').classList.remove('empty-state');$('#routeList').innerHTML=state.route.length?state.route.map((r,i)=>`<div class="item"><div class="item-top"><div><h3>${esc(r.name)}</h3><p>${esc(r.address)}</p></div><span class="badge neutral">${esc(r.status||'pendente')}</span></div><div class="route-actions">${['visitado','não encontrado','reagendar','cancelado','pendente'].map(s=>`<button data-route-status="${i}|${s}" class="${r.status===s?'selected':''}">${s}</button>`).join('')}<button data-route-remove="${i}">remover</button></div></div>`).join(''):'<div class="empty-state">Use “Planejar meu dia” para montar o roteiro.</div>'}
-function renderMore(){const el=$('#morePanel');if(!state.people.length){el.innerHTML='';return}const streets={};state.people.forEach(p=>{const k=p.street||'Sem logradouro';streets[k]=(streets[k]||0)+1});el.innerHTML=`<h3>Resumo atual</h3><p><b>${state.people.length}</b> pessoas · <b>${state.families.length}</b> famílias · <b>${Object.keys(streets).length}</b> logradouros.</p>`}
-function showView(v){$$('.view').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.viewTarget===v));window.scrollTo(0,0)}
-function detailAlert(id){const a=state.alerts.find(x=>x.id===id);if(!a)return;$('#detailContent').innerHTML=`<span class="eyebrow">${esc(a.category)}</span><h2>${esc(a.title)}</h2><div class="detail-row"><b>Quem é</b>${esc(a.personName)}</div><div class="detail-row"><b>Por que apareceu</b>${esc(a.why)}</div><div class="detail-row"><b>Prazo</b>${esc(a.deadline)}</div><div class="detail-row"><b>O que fazer</b>${esc(a.action)}</div><div class="detail-row"><b>Prioridade</b>${a.priority}/100 — cálculo transparente baseado apenas em dados presentes.</div>`;$('#detailDialog').showModal()}
-function detailPerson(key){const p=state.people.find(x=>x.key===key);if(!p)return;const ac=state.alerts.filter(a=>a.personKey===key);$('#detailContent').innerHTML=`<span class="eyebrow">PESSOA</span><h2>${esc(p.name)}</h2><div class="detail-row"><b>Endereço</b>${esc(p.address||'—')}</div><div class="detail-row"><b>Data de nascimento</b>${esc(p.birth||'—')}</div><div class="detail-row"><b>Identificadores</b>CPF ${maskId(p.cpf)} · CNS ${maskId(p.cns)}</div><div class="detail-row"><b>Responsável familiar</b>${esc(p.responsibleName||'—')}</div><div class="detail-row"><b>Alertas ativos</b>${ac.length}</div>`;$('#detailDialog').showModal()}
-async function importFiles(files){for(const file of files){try{const out=await parseFile(file);state.rows=out.data;state.meta=out.meta;state.imports.unshift({file:file.name,count:out.data.length,encoding:out.encoding,at:new Date().toISOString()});recalc();toast(`Importado: ${out.data.length} registros. Datas DD/MM/AAAA reconhecidas.`)}catch(e){toast(e.message,true)}}}
-function toast(msg,error=false){const el=$('#dataStatus');el.textContent=msg;el.style.borderColor=error?'#e5aaaa':'#9bcfc3';setTimeout(renderHeader,4500)}
-function plan(){const keys=[];state.alerts.slice(0,12).forEach(a=>{if(!keys.includes(a.personKey))keys.push(a.personKey)});state.route=keys.map(k=>{const p=state.people.find(x=>x.key===k);return{name:p.name,address:p.address,street:p.street,status:'pendente'}});renderRoute();showView('roteiro')}
-function showDataPanel(){const p=$('#morePanel');p.innerHTML=`<div class="panel-head"><h3>Dados</h3><span class="badge neutral">processamento local</span></div><p>O arquivo CSV não é enviado para servidores externos. O parser reconhece Windows-1252/ANSI, UTF-8, ponto e vírgula, vírgula ou tabulação e procura automaticamente a linha real do cabeçalho.</p><button class="primary" id="importNow" style="background:#0b6b5c;color:white">Importar CSV</button> <button class="ghost" id="loadDemo">Carregar demonstração</button><p><small>${state.imports.map(i=>`${esc(i.file)} — ${i.count} registros (${i.encoding})`).join('<br>')||'Nenhuma importação nesta sessão.'}</small></p>`;$('#importNow').onclick=()=>$('#csvInput').click();$('#loadDemo').onclick=()=>{state.rows=demoRows;state.meta={microarea:'DEMO'};recalc();toast('Modo demonstração carregado: dados totalmente fictícios.')};}
-function showConfig(){const p=$('#morePanel');p.innerHTML=`<h3>Privacidade e armazenamento</h3><p>Por padrão, os dados ficam somente na sessão. Para persistir, use criptografia AES-GCM com um PIN que não é armazenado.</p><input id="savePin" class="search" inputmode="numeric" placeholder="PIN para criptografar"><button id="saveSecure" class="ghost">Salvar criptografado</button> <button id="restoreSecure" class="ghost">Abrir dados</button> <button id="wipe" class="ghost">Apagar cofre local</button>`;$('#saveSecure').onclick=async()=>{const pin=$('#savePin').value;if(pin.length<4)return toast('Use um PIN com pelo menos 4 caracteres.',true);await saveEncrypted(pin,{rows:state.rows,meta:state.meta,imports:state.imports,route:state.route});toast('Dados salvos criptografados neste dispositivo.')};$('#restoreSecure').onclick=async()=>{try{const d=await loadEncrypted($('#savePin').value);if(!d)return toast('Nenhum cofre local encontrado.',true);Object.assign(state,d);recalc();toast('Dados locais descriptografados com sucesso.')}catch{toast('PIN inválido ou dados indisponíveis.',true)}};$('#wipe').onclick=async()=>{if(confirm('Apagar definitivamente o cofre local criptografado?')){await clearVault();toast('Cofre local apagado.')}}}
-function showFamilies(){const p=$('#morePanel');p.innerHTML=`<h3>Famílias</h3>${state.families.slice(0,100).map(f=>`<div class="item"><b>${esc(f.responsible)}</b><p>${esc(f.address)} · ${f.members.length} membro(s)</p></div>`).join('')||'<p>Sem dados.</p>'}`}
-function showTerritory(){const streets={};state.people.forEach(p=>{const k=p.street||'Sem logradouro';streets[k]=(streets[k]||0)+1});$('#morePanel').innerHTML=`<h3>Meu território</h3>${Object.entries(streets).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div class="detail-row"><b>${esc(s)}</b>${n} pessoa(s)</div>`).join('')}`}
-function initFilters(){const cats=['todos','cadastro','familia','idoso','crianca','dados'];$('#alertFilters').innerHTML=cats.map(c=>`<button class="chip ${c==='todos'?'active':''}" data-filter="${c}">${c}</button>`).join('')}
-function bind(){document.addEventListener('click',e=>{const t=e.target.closest('[data-view-target],[data-go],[data-alert],[data-person],[data-filter],[data-route-status],[data-route-remove],[data-more]');if(!t)return;if(t.dataset.viewTarget)showView(t.dataset.viewTarget);if(t.dataset.go)showView(t.dataset.go);if(t.dataset.alert)detailAlert(t.dataset.alert);if(t.dataset.person)detailPerson(t.dataset.person);if(t.dataset.filter){state.alertFilter=t.dataset.filter;$$('.chip').forEach(c=>c.classList.toggle('active',c===t));renderAlerts()}if(t.dataset.routeStatus){const[i,s]=t.dataset.routeStatus.split('|');state.route[+i].status=s;renderRoute()}if(t.dataset.routeRemove){state.route.splice(+t.dataset.routeRemove,1);renderRoute()}if(t.dataset.more){({dados:showDataPanel,config:showConfig,familias:showFamilies,territorio:showTerritory,indicadores:()=>{$('#morePanel').innerHTML=`<h3>Indicadores</h3><p>Alertas: <b>${state.alerts.length}</b> · Pessoas: <b>${state.people.length}</b> · Roteiro: <b>${state.route.length}</b>.</p>`}}[t.dataset.more]||(()=>{}))()}});$('#planBtn').onclick=plan;$('#clearRoute').onclick=()=>{state.route=[];renderRoute()};$('#csvInput').onchange=e=>importFiles([...e.target.files]);$('#alertSearch').oninput=renderAlerts;$('#peopleSearch').oninput=renderPeople;$('#lockBtn').onclick=()=>$('#lockDialog').showModal();$('#unlockBtn').onclick=()=>{$('#lockDialog').close()};window.addEventListener('online',()=>$('#offlineBanner').hidden=true);window.addEventListener('offline',()=>$('#offlineBanner').hidden=false)}
-function init(){const d=new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date());$('#todayDate').textContent=d[0].toUpperCase()+d.slice(1);initFilters();bind();renderAll();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});$('#offlineBanner').hidden=navigator.onLine}
+import{parseFile,parseDate,formatDate}from'./modules/csv.js';
+import{buildPeople,getVisitState,maskId}from'./modules/model.js';
+import{demoRows}from'./modules/demo.js';
+
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+const state={rows:[],people:[],meta:{},imports:[],visitFilter:'todos'};
+
+const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({
+  '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
+}[c]));
+
+const formatNumber=n=>new Intl.NumberFormat('pt-BR').format(n||0);
+
+function recalc(){
+  state.people=buildPeople(state.rows);
+  renderAll();
+}
+
+function showView(view){
+  $$('.view').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
+  $$('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.viewTarget===view));
+  window.scrollTo(0,0);
+}
+
+function statusOf(person){
+  return getVisitState(person);
+}
+
+function sortPeopleForVisits(list){
+  const order={agora:0,breve:1,historico:2,programada:3,'sem-data':4};
+  return [...list].sort((a,b)=>{
+    const sa=statusOf(a),sb=statusOf(b);
+    const group=(order[sa.key]??9)-(order[sb.key]??9);
+    if(group)return group;
+    if(sa.key==='historico')return sa.sortValue-sb.sortValue;
+    if(sa.sortValue!==sb.sortValue)return sa.sortValue-sb.sortValue;
+    return a.name.localeCompare(b.name,'pt-BR');
+  });
+}
+
+function renderAll(){
+  renderHeader();
+  renderMetrics();
+  renderFocus();
+  renderStreetSummary();
+  renderVisitFilters();
+  renderVisitList();
+  renderPeople();
+  renderFormatInfo();
+  renderImportHistory();
+}
+
+function renderHeader(){
+  $('#microareaLabel').textContent=state.meta.microarea?'MICROÁREA '+state.meta.microarea:'MICROÁREA —';
+
+  if(!state.people.length){
+    $('#dataStatus').textContent='Nenhuma base importada. Toque em + para carregar o CSV.';
+    return;
+  }
+
+  const generated=state.meta.generatedAt?' · gerado em '+state.meta.generatedAt:'';
+  $('#dataStatus').innerHTML='<strong>'+formatNumber(state.people.length)+' pessoas</strong> no painel'+generated+'.';
+}
+
+function metricCard(count,label,filter,icon,kind){
+  return '<button class="metric-card '+(kind||'')+'" type="button" data-visit-filter="'+filter+'">'+
+    '<span class="metric-icon">'+icon+'</span>'+
+    '<b>'+formatNumber(count)+'</b>'+
+    '<span>'+label+'</span>'+
+  '</button>';
+}
+
+function renderMetrics(){
+  const statuses=state.people.map(statusOf);
+  const due=statuses.filter(s=>s.key==='agora').length;
+  const soon=statuses.filter(s=>s.key==='breve').length;
+  const history=statuses.filter(s=>s.key==='historico').length;
+  const missing=statuses.filter(s=>s.key==='sem-data').length;
+
+  $('#visitMetrics').innerHTML=
+    metricCard(due,'Visitar agora','agora','!','due')+
+    metricCard(soon,'Em até 7 dias','breve','↗','soon')+
+    metricCard(history,'Com última visita','historico','◷','')+
+    metricCard(missing,'Sem data de visita','sem-data','—','');
+}
+
+function personCard(person){
+  const s=statusOf(person);
+  const address=person.address||'Endereço não informado';
+  return '<button class="person-card" type="button" data-person="'+esc(person.key)+'">'+
+    '<div class="person-main">'+
+      '<h3>'+esc(person.name)+'</h3>'+
+      '<p>'+esc(address)+'</p>'+
+    '</div>'+
+    '<span class="status-pill '+esc(s.key)+'">'+esc(s.label)+'</span>'+
+  '</button>';
+}
+
+function renderFocus(){
+  const wrap=$('#focusList');
+  const title=$('#focusTitle');
+  if(!state.people.length){
+    title.textContent='Quem olhar primeiro';
+    wrap.innerHTML='<div class="empty-state"><strong>Importe o CSV do território</strong>O Zela organiza as pessoas assim que o arquivo for carregado.</div>';
+    return;
+  }
+
+  const sorted=sortPeopleForVisits(state.people);
+  const urgent=sorted.filter(p=>['agora','breve'].includes(statusOf(p).key));
+  if(urgent.length){
+    title.textContent='Quem olhar primeiro';
+    wrap.innerHTML=urgent.slice(0,6).map(personCard).join('');
+    return;
+  }
+
+  const history=sorted.filter(p=>statusOf(p).key==='historico');
+  if(history.length){
+    title.textContent='Há mais tempo sem visita registrada';
+    wrap.innerHTML=history.slice(0,6).map(personCard).join('');
+    return;
+  }
+
+  title.textContent='Datas de visita não vieram no arquivo';
+  wrap.innerHTML='<div class="empty-state"><strong>O CSV foi lido corretamente</strong>Este relatório não contém “última visita” ou “próxima visita”. O Zela não inventa um prazo: importe um relatório que traga uma dessas datas para liberar a priorização de visitas.</div>';
+}
+
+function renderStreetSummary(){
+  const counts={};
+  for(const p of state.people){
+    const street=p.street&&p.street!=='-'?p.street:'Sem logradouro';
+    counts[street]=(counts[street]||0)+1;
+  }
+  const rows=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  $('#streetSummary').innerHTML=rows.length?rows.map(([name,count])=>
+    '<div class="street-row"><b>'+esc(name)+'</b><span>'+formatNumber(count)+'</span></div>'
+  ).join(''):'<div class="empty-state">Nenhum logradouro carregado.</div>';
+}
+
+function renderVisitFilters(){
+  const filters=[
+    ['todos','Todos'],
+    ['agora','Agora'],
+    ['breve','Em breve'],
+    ['historico','Mais tempo'],
+    ['programada','Programadas'],
+    ['sem-data','Sem data']
+  ];
+  $('#visitFilters').innerHTML=filters.map(([key,label])=>
+    '<button class="chip '+(state.visitFilter===key?'active':'')+'" type="button" data-visit-filter="'+key+'">'+label+'</button>'
+  ).join('');
+}
+
+function renderVisitList(){
+  const query=($('#visitSearch')?.value||'').trim().toLowerCase();
+  let list=sortPeopleForVisits(state.people);
+
+  if(state.visitFilter!=='todos'){
+    list=list.filter(p=>statusOf(p).key===state.visitFilter);
+  }
+
+  if(query){
+    list=list.filter(p=>
+      p.name.toLowerCase().includes(query)||
+      String(p.street||'').toLowerCase().includes(query)||
+      String(p.address||'').toLowerCase().includes(query)
+    );
+  }
+
+  $('#visitList').innerHTML=list.length?list.slice(0,300).map(personCard).join(''):
+    '<div class="empty-state"><strong>Nada encontrado</strong>Tente outro filtro ou outra busca.</div>';
+}
+
+function renderPeople(){
+  const typed=($('#peopleSearch')?.value||'').trim();
+  const text=typed.toLowerCase();
+  const digits=typed.replace(/\D/g,'');
+  let list=[...state.people].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+
+  if(text){
+    list=list.filter(p=>
+      p.name.toLowerCase().includes(text)||
+      String(p.street||'').toLowerCase().includes(text)||
+      (digits&&String(p.cpf||'').replace(/\D/g,'').includes(digits))||
+      (digits&&String(p.cns||'').replace(/\D/g,'').includes(digits))
+    );
+  }
+
+  $('#peopleList').innerHTML=list.length?list.slice(0,300).map(personCard).join(''):
+    '<div class="empty-state"><strong>Nenhuma pessoa encontrada</strong>Importe um CSV ou ajuste a busca.</div>';
+}
+
+function delimiterName(value){
+  if(value===';')return'Ponto e vírgula (;)';
+  if(value===',')return'Vírgula (,)';
+  if(value==='\t')return'Tabulação';
+  return value||'—';
+}
+
+function formatItem(label,value){
+  return '<div class="format-item"><b>'+label+'</b><span>'+esc(value||'—')+'</span></div>';
+}
+
+function renderFormatInfo(){
+  const last=state.imports[0]||{};
+  $('#formatInfo').innerHTML=
+    formatItem('Codificação',last.encoding||'—')+
+    formatItem('Separador',delimiterName(last.delimiter))+
+    formatItem('Datas',state.meta.dateFormat||'—')+
+    formatItem('Datas de visita',state.meta.hasVisitDate?'Encontradas':'Não encontradas');
+}
+
+function renderImportHistory(){
+  const last=state.imports[0];
+  if(!last){
+    $('#importHistory').textContent='Nenhuma importação nesta sessão.';
+    return;
+  }
+
+  $('#importHistory').innerHTML=
+    '<strong>'+esc(last.file)+'</strong><br>'+
+    formatNumber(last.count)+' registros · cabeçalho na linha '+last.headerLine+
+    ' · '+esc(last.encoding)+' · '+esc(state.meta.dateFormat||'data não identificada');
+}
+
+function detailPerson(key){
+  const p=state.people.find(x=>x.key===key);
+  if(!p)return;
+  const s=statusOf(p);
+
+  $('#detailContent').innerHTML=
+    '<span class="eyebrow">PESSOA</span>'+
+    '<h2>'+esc(p.name)+'</h2>'+
+    '<div class="detail-row"><b>Situação de visita</b>'+esc(s.label)+'</div>'+
+    '<div class="detail-row"><b>Última visita encontrada</b>'+formatDate(p.lastVisit)+'</div>'+
+    '<div class="detail-row"><b>Próxima visita encontrada</b>'+formatDate(p.nextVisit)+'</div>'+
+    '<div class="detail-row"><b>Endereço</b>'+esc(p.address||'—')+'</div>'+
+    '<div class="detail-row"><b>Nascimento</b>'+formatDate(p.birth)+'</div>'+
+    '<div class="detail-row"><b>Identificadores</b>CPF '+maskId(p.cpf)+' · CNS '+maskId(p.cns)+'</div>'+
+    '<div class="detail-row"><b>Importante</b>O Zela apenas organiza as datas presentes no arquivo. Ele não cria periodicidade clínica nem substitui o registro oficial no e-SUS.</div>';
+
+  $('#detailDialog').showModal();
+}
+
+async function importFile(file){
+  try{
+    const out=await parseFile(file);
+    state.rows=out.data;
+    state.meta=out.meta;
+    state.imports.unshift({
+      file:file.name,
+      count:out.data.length,
+      encoding:out.encoding,
+      delimiter:out.delimiter,
+      headerLine:out.headerIndex+1,
+      at:new Date().toISOString()
+    });
+    recalc();
+    toast('Arquivo lido: '+out.data.length+' pessoas · datas '+(out.meta.dateFormat||'não identificadas')+'.');
+  }catch(error){
+    toast(error?.message||'Não foi possível ler este CSV.',true);
+  }
+}
+
+function toast(message,error=false){
+  const el=$('#dataStatus');
+  el.textContent=message;
+  el.style.borderColor=error?'#e7b3b0':'#9bc7bc';
+  setTimeout(()=>{
+    el.style.borderColor='';
+    renderHeader();
+  },4200);
+}
+
+function toBrDate(date){
+  const d=String(date.getDate()).padStart(2,'0');
+  const m=String(date.getMonth()+1).padStart(2,'0');
+  return d+'/'+m+'/'+date.getFullYear();
+}
+
+function demoWithVisits(){
+  const now=new Date();
+  const shift=days=>{
+    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+days);
+    return toBrDate(d);
+  };
+  return demoRows.map((row,index)=>({
+    ...row,
+    lastVisit:index<3?shift(-(20+index*35)):'',
+    nextVisit:index===0?shift(-2):index===1?shift(4):''
+  }));
+}
+
+function loadDemo(){
+  state.rows=demoWithVisits();
+  state.meta={
+    microarea:'DEMO',
+    generatedAt:toBrDate(new Date()),
+    dateFormat:'DD/MM/AAAA',
+    hasVisitDate:true
+  };
+  state.imports=[{
+    file:'demonstração fictícia',
+    count:state.rows.length,
+    encoding:'UTF-8',
+    delimiter:';',
+    headerLine:1,
+    at:new Date().toISOString()
+  }];
+  recalc();
+  showView('painel');
+  toast('Demonstração carregada com dados fictícios.');
+}
+
+function setVisitFilter(filter,openList=true){
+  state.visitFilter=filter;
+  renderVisitFilters();
+  renderVisitList();
+  if(openList)showView('visitas');
+}
+
+function bind(){
+  document.addEventListener('click',event=>{
+    const target=event.target.closest('[data-view-target],[data-go],[data-person],[data-visit-filter]');
+    if(!target)return;
+
+    if(target.dataset.viewTarget)showView(target.dataset.viewTarget);
+    if(target.dataset.go)showView(target.dataset.go);
+    if(target.dataset.person)detailPerson(target.dataset.person);
+    if(target.dataset.visitFilter)setVisitFilter(target.dataset.visitFilter,true);
+  });
+
+  $('#importTopBtn').onclick=()=>$('#csvInput').click();
+  $('#importNow').onclick=()=>$('#csvInput').click();
+  $('#loadDemo').onclick=loadDemo;
+  $('#csvInput').onchange=event=>{
+    const file=event.target.files?.[0];
+    if(file)importFile(file);
+    event.target.value='';
+  };
+  $('#visitSearch').oninput=renderVisitList;
+  $('#peopleSearch').oninput=renderPeople;
+
+  window.addEventListener('online',()=>$('#offlineBanner').hidden=true);
+  window.addEventListener('offline',()=>$('#offlineBanner').hidden=false);
+}
+
+function init(){
+  const formatted=new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).format(new Date());
+  $('#todayDate').textContent=formatted.charAt(0).toUpperCase()+formatted.slice(1);
+  bind();
+  renderAll();
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  $('#offlineBanner').hidden=navigator.onLine;
+}
+
 init();
