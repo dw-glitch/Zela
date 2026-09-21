@@ -227,10 +227,13 @@ function sourceCard(title,kind,base,buttonLabel){
   const busy=Boolean(importBusy[kind]);
   const peopleCount=ready?distinctPeopleCount(base):0;
   const generated=base?.meta?.generatedAt||base?.meta?.generatedDate||'';
+  const recordsRead=ready?(base.meta?.recordsRead??base.data.length):0;
+  const validRecords=ready?(base.meta?.validRecords??base.data.length):0;
   const details=ready
     ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong>'+
-      '<span class="source-detail">'+formatNumber(base.data.length)+' registros válidos · '+formatNumber(peopleCount)+' pessoas identificadas</span>'+
-      '<span class="source-detail">Cabeçalho na linha '+(base.headerIndex+1)+(generated?' · Base '+esc(generated):'')+'</span>'+
+      '<span class="source-detail">'+formatNumber(recordsRead)+' registros lidos · '+formatNumber(validRecords)+' válidos</span>'+
+      '<span class="source-detail">'+formatNumber(peopleCount)+' pessoas identificadas · cabeçalho na linha '+(base.headerIndex+1)+'</span>'+
+      (generated?'<span class="source-detail">Base gerada em '+esc(generated)+'</span>':'')+
       '<span class="source-ready">✓ Base pronta</span>'
     : 'Nenhum arquivo carregado.';
   return '<div class="source-card '+(ready?'ready ':'')+(busy?'busy':'')+'">'+
@@ -271,7 +274,10 @@ function friendlyImportError(error,kind){
 
 function successMessage(kind,parsed,nextTerritory,nextFollowup,derived){
   const label=importLabel(kind);
-  const loaded=label+' carregado com '+formatNumber(parsed.data.length)+' registros.';
+  const recordsRead=parsed.meta?.recordsRead??parsed.data.length;
+  const invalid=parsed.meta?.invalidRecords||0;
+  const loaded=label+' carregado com '+formatNumber(recordsRead)+' registros lidos'+
+    (invalid?' e '+formatNumber(parsed.data.length)+' válidos.':'.');
   if(nextTerritory&&nextFollowup&&derived.stats){
     return loaded+' Bases conciliadas com sucesso: '+formatNumber(derived.stats.matchedCount)+' pessoas conciliadas, '+
       formatNumber(derived.stats.territoryOnly)+' sem acompanhamento e '+
@@ -351,8 +357,8 @@ function renderFormatInfo(){
   const territory=state.territoryBase;
   const followup=state.followupBase;
   $('#formatInfo').innerHTML=
-    formatItem('Território',territory?territory.encoding+' · '+territory.data.length+' registros':'—')+
-    formatItem('Acompanhamentos',followup?followup.encoding+' · '+followup.data.length+' registros':'—')+
+    formatItem('Território',territory?territory.encoding+' · '+(territory.meta?.recordsRead??territory.data.length)+' lidos · '+territory.data.length+' válidos':'—')+
+    formatItem('Acompanhamentos',followup?followup.encoding+' · '+(followup.meta?.recordsRead??followup.data.length)+' lidos · '+followup.data.length+' válidos':'—')+
     formatItem('Data da base',followup?.meta?.generatedAt||territory?.meta?.generatedAt||'—')+
     formatItem('Visita domiciliar',followup?.meta?.hasVisitElapsed?'Dias/meses encontrados':'Aguardando base');
 }
