@@ -1,12 +1,13 @@
-const CACHE='zela-shell-v8';
+const CACHE='zela-shell-v9';
+const XLSX_URL='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
 const SHELL=[
   './',
   './index.html',
-  './styles.css?v=8',
-  './manifest.webmanifest?v=8',
+  './styles.css?v=9',
+  './manifest.webmanifest?v=9',
   './assets/zela-icon-192-v2.png',
   './assets/zela-touch-180-v2.png',
-  './src/app.js?v=8',
+  './src/app.js?v=9',
   './src/modules/csv.js',
   './src/modules/model.js',
   './src/modules/demo.js'
@@ -15,7 +16,10 @@ const SHELL=[
 self.addEventListener('install',event=>{
   event.waitUntil(
     caches.open(CACHE)
-      .then(cache=>cache.addAll(SHELL))
+      .then(async cache=>{
+        await cache.addAll(SHELL);
+        await Promise.allSettled([cache.add(XLSX_URL)]);
+      })
       .then(()=>self.skipWaiting())
   );
 });

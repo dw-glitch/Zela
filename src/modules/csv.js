@@ -50,6 +50,70 @@ const followupAliases={
   conditions:['condicoes de saude','condições de saúde','condicoes','condições','condição de saúde','condicao de saude']
 };
 
+const XLSX_CDN='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+let xlsxLoader=null;
+
+function mismatchMessage(actualType){
+  if(actualType==='territory')return'Este arquivo foi reconhecido como Território. Selecione-o como Base 1.';
+  if(actualType==='followup')return'Este arquivo foi reconhecido como Acompanhamentos. Selecione-o como Base 2.';
+  return'O arquivo foi lido, mas o tipo de relatório não pôde ser identificado.';
+}
+
+export async function ensureXlsxLibrary(){
+  if(globalThis.XLSX?.read&&globalThis.XLSX?.utils?.sheet_to_json)return globalThis.XLSX;
+  if(typeof document==='undefined'){
+    throw new Error('O leitor de Excel não está disponível neste ambiente.');
+  }
+  if(xlsxLoader)return xlsxLoader;
+
+  xlsxLoader=new Promise((resolve,reject)=>{
+    let script=document.querySelector('script[data-zela-xlsx]');
+    let timer=null;
+
+    const cleanup=()=>{
+      if(timer)clearTimeout(timer);
+    };
+    const succeed=()=>{
+      cleanup();
+      if(globalThis.XLSX?.read&&globalThis.XLSX?.utils?.sheet_to_json){
+        if(script)script.dataset.loaded='true';
+        resolve(globalThis.XLSX);
+        return;
+      }
+      if(script)script.remove();
+      xlsxLoader=null;
+      reject(new Error('O componente de leitura do Excel carregou de forma incompleta. Tente novamente.'));
+    };
+    const fail=()=>{
+      cleanup();
+      if(script)script.remove();
+      xlsxLoader=null;
+      reject(new Error('Não foi possível carregar o leitor de Excel. Verifique a conexão e tente novamente.'));
+    };
+
+    if(script){
+      if(script.dataset.loaded==='true'){
+        succeed();
+        return;
+      }
+      script.addEventListener('load',succeed,{once:true});
+      script.addEventListener('error',fail,{once:true});
+    }else{
+      script=document.createElement('script');
+      script.src=XLSX_CDN;
+      script.async=true;
+      script.dataset.zelaXlsx='true';
+      script.addEventListener('load',succeed,{once:true});
+      script.addEventListener('error',fail,{once:true});
+      document.head.append(script);
+    }
+
+    timer=setTimeout(fail,15000);
+  });
+
+  return xlsxLoader;
+}
+
 export const normalize=value=>String(value??'')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g,'')
@@ -382,16 +446,20 @@ export function parseText(text){
   return{...parseRows(rows),delimiter};
 }
 
-function workbookMatrixToRows(matrix){
+export function workbookMatrixToRows(matrix){
   const rows=(matrix||[]).map(row=>Array.isArray(row)?row:[]);
-  const semicolonRich=rows.slice(0,50).some(row=>row.some(cell=>String(cell??'').includes(';')));
-  if(!semicolonRich)return rows;
 
   return rows.map(row=>{
     let last=row.length-1;
     while(last>=0&&(row[last]==null||String(row[last]).trim()===''))last--;
     if(last<0)return[];
-    const reconstructed=row.slice(0,last+1).map(value=>{
+
+    const trimmed=row.slice(0,last+1);
+    const firstNonEmpty=trimmed.find(value=>value!=null&&String(value).trim()!=='');
+    const embeddedDelimited=firstNonEmpty!=null&&countDelimiter(String(firstNonEmpty),';')>=4;
+    if(!embeddedDelimited)return trimmed;
+
+    const reconstructed=trimmed.map(value=>{
       if(value instanceof Date)return formatDate(value);
       return String(value??'').trim();
     }).join(',');
@@ -411,20 +479,21 @@ function parseWorkbook(workbook,expectedType){
         dateNF:'dd/mm/yyyy'
       });
       const parsed=parseRows(workbookMatrixToRows(matrix));
-      if(expectedType&&parsed.reportType!==expectedType)continue;
       candidates.push({...parsed,sheetName});
     }catch(error){
       failures.push({sheetName,message:error?.message||String(error)});
     }
   }
   if(!candidates.length){
-    if(expectedType){
-      const label=expectedType==='territory'?'Território / acompanhamento da microárea':'Acompanhamentos / Condições de saúde / Geral';
-      throw new Error('Não foi encontrada uma aba compatível com “'+label+'”.');
-    }
     throw new Error(failures[0]?.message||'A planilha não possui uma aba compatível com os relatórios do e-SUS.');
   }
+
   candidates.sort((a,b)=>b.data.length-a.data.length||b.score-a.score);
+  if(expectedType){
+    const compatible=candidates.filter(candidate=>candidate.reportType===expectedType);
+    if(!compatible.length)throw new Error(mismatchMessage(candidates[0].reportType));
+    return compatible[0];
+  }
   return candidates[0];
 }
 
@@ -436,10 +505,10 @@ export async function parseFile(file,expectedType=''){
 
   const buffer=await file.arrayBuffer();
   if(name.endsWith('.xls')||name.endsWith('.xlsx')){
-    if(!globalThis.XLSX?.read)throw new Error('O leitor de Excel não está disponível. Conecte-se à internet uma vez para carregar o componente e tente novamente.');
+    const XLSX=await ensureXlsxLibrary();
     let workbook;
     try{
-      workbook=globalThis.XLSX.read(buffer,{type:'array',cellDates:true});
+      workbook=XLSX.read(buffer,{type:'array',cellDates:true});
     }catch{
       throw new Error('Não foi possível abrir esta planilha do Excel. Confirme se o arquivo não está corrompido e foi exportado pelo e-SUS.');
     }
@@ -456,8 +525,7 @@ export async function parseFile(file,expectedType=''){
   const{encoding,text}=decodeBuffer(buffer);
   const parsed=parseText(text);
   if(expectedType&&parsed.reportType!==expectedType){
-    const expected=expectedType==='territory'?'Território / acompanhamento da microárea':'Acompanhamentos / Condições de saúde / Geral';
-    throw new Error('Este arquivo foi reconhecido como outro relatório. Selecione aqui a base “'+expected+'”.');
+    throw new Error(mismatchMessage(parsed.reportType));
   }
   return{...parsed,encoding,fileName:file.name,size:file.size};
 }

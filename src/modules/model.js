@@ -124,7 +124,7 @@ function matchFollowupRow(row,indexes){
 function splitConditions(value){
   const text=String(value??'').trim();
   if(!text||text==='-')return[];
-  return text.split(/[;,|]/).map(item=>item.trim()).filter(Bolean);
+  return text.split(/[;,|]/).map(item=>item.trim()).filter(Boolean);
 }
 
 function latestVisit(meta,rows){
@@ -152,7 +152,7 @@ export function mergeBases(territoryBase,followupBase,now=new Date()){
   const followup=followupBase?.data||[];
   const indexes={
     cpf:uniqueMap(territory,row=>validCpf(row.cpf)),
-    cns:uniqueMap(territory,wrow=>validCns(row.cns)),
+    cns:uniqueMap(territory,row=>validCns(row.cns)),
     nameBirth:uniqueMap(territory,exactNameBirth)
   };
 

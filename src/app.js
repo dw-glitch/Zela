@@ -16,6 +16,8 @@ const state={
   conditionFilter:'todos'
 };
 
+const importBusy={territory:false,followup:false};
+
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({
   '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
 }[char]));
@@ -34,19 +36,21 @@ function showView(view){
   window.scrollTo(0,0);
 }
 
-function recalc(){
-  if(!state.territoryBase){
-    state.people=[];
-    state.followupOnlyPeople=[];
-    state.stats=null;
-    state.inconsistencies=[];
-  }else{
-    const merged=mergeBases(state.territoryBase,state.followupBase,todayStart());
-    state.people=merged.people;
-    state.followupOnlyPeople=merged.followupOnlyPeople;
-    state.stats=merged.stats;
-    state.inconsistencies=merged.inconsistencies;
+function calculateDerived(territoryBase,followupBase){
+  if(!territoryBase){
+    return{people:[],followupOnlyPeople:[],stats:null,inconsistencies:[]};
   }
+  const merged=mergeBases(territoryBase,followupBase,todayStart());
+  return{
+    people:merged.people,
+    followupOnlyPeople:merged.followupOnlyPeople,
+    stats:merged.stats,
+    inconsistencies:merged.inconsistencies
+  };
+}
+
+function recalc(){
+  Object.assign(state,calculateDerived(state.territoryBase,state.followupBase));
   renderAll();
 }
 
@@ -203,20 +207,55 @@ function renderPeople(){
 
 function sourceCard(title,kind,base,buttonLabel){
   const ready=Boolean(base);
+  const busy=Boolean(importBusy[kind]);
   const details=ready
-    ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong><br>'+formatNumber(base.data.length)+' registros · cabeçalho na linha '+(base.headerIndex+1)
+    ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong><br>'+formatNumber(base.data.length)+' registros · cabeçalho na linha '+(base.headerIndex+1)+'<br><span class="source-ready">✓ Base pronta</span>'
     : 'Nenhum arquivo carregado.';
-  return '<div class="source-card '+(ready?'ready':'')+'">'+
+  return '<div class="source-card '+(ready?'ready ':'')+(busy?'busy':'')+'">'+
     '<span class="eyebrow">'+esc(title)+'</span>'+
     '<div class="source-status">'+details+'</div>'+
-    '<button class="primary source-action" type="button" data-import-kind="'+kind+'">'+esc(buttonLabel)+'</button>'+
+    '<button class="primary source-action" type="button" data-import-kind="'+kind+'" '+(busy?'disabled aria-busy="true"':'')+'>'+
+      esc(busy?'Lendo...':buttonLabel)+
+    '</button>'+
   '</div>';
 }
 
 function renderImportCards(){
   $('#sourceCards').innerHTML=
-    sourceCard('BASE 1 · TERRITÓRIO / MICROÁREA','territory',state.territoryBase,state.territoryBase?'Atualizar Território':'Selecionar CSV')+
-    sourceCard('BASE 2 · ACOMPANHAMENTOS / CONDIÇÕES DE SAÚDE','followup',state.followupBase,state.followupBase?'Atualizar Acompanhamentos':'Selecionar XLS/XLSX');
+    sourceCard('BASE 1 · TERRITÓRIO / MICROÁREA','territory',state.territoryBase,state.territoryBase?'Atualizar Território':'Selecionar CSV/XLS/XLSX')+
+    sourceCard('BASE 2 · ACOMPANHAMENTOS / CONDIÇÕES DE SAÚDE','followup',state.followupBase,state.followupBase?'Atualizar Acompanhamentos':'Selecionar CSV/XLS/XLSX');
+}
+
+function setImportFeedback(message,type='info'){
+  const element=$('#importFeedback');
+  if(!element)return;
+  element.hidden=!message;
+  element.textContent=message||'';
+  element.className='import-feedback '+type;
+}
+
+function importLabel(kind){
+  return kind==='territory'?'Território':'Acompanhamentos';
+}
+
+function friendlyImportError(error,kind){
+  const fallback='Não foi possível processar este arquivo.';
+  const raw=String(error?.message||fallback).trim();
+  if(/ReferenceError|Cannot read|undefined is not|NaN/i.test(raw)){
+    return 'Falha interna ao processar '+importLabel(kind)+'. A base anterior foi mantida. Tente novamente.';
+  }
+  return raw||fallback;
+}
+
+function successMessage(kind,parsed,nextTerritory,nextFollowup,derived){
+  const label=importLabel(kind);
+  const loaded=label+' carregado com '+formatNumber(parsed.data.length)+' registros.';
+  if(nextTerritory&&nextFollowup&&derived.stats){
+    return loaded+' Bases conciliadas com sucesso: '+formatNumber(derived.stats.matchedCount)+' pessoas conciliadas, '+
+      formatNumber(derived.stats.territoryOnly)+' sem acompanhamento e '+
+      formatNumber(derived.stats.followupOnlyRecords)+' registros de Acompanhamentos fora do Território.';
+  }
+  return loaded+' Aguardando '+(nextTerritory?'Acompanhamentos':'Território')+' para cruzar as bases.';
 }
 
 function renderQuality(){
@@ -285,15 +324,35 @@ function detailPerson(key){
 
 async function importKind(kind,file){
   const expected=kind==='territory'?'territory':'followup';
+  const label=importLabel(kind);
+  showView('dados');
+  importBusy[kind]=true;
+  renderImportCards();
+  setImportFeedback('Lendo '+label+'...','info');
+
   try{
     const parsed=await parseFile(file,expected);
-    if(kind==='territory')state.territoryBase=parsed;
-    else state.followupBase=parsed;
-    recalc();
-    showView('dados');
-    toast((kind==='territory'?'Território':'Acompanhamentos')+' carregado: '+formatNumber(parsed.data.length)+' registros.');
+    setImportFeedback('Arquivo reconhecido como '+label+' · '+formatNumber(parsed.data.length)+' registros. Processando...','info');
+
+    const nextTerritory=kind==='territory'?parsed:state.territoryBase;
+    const nextFollowup=kind==='followup'?parsed:state.followupBase;
+
+    if(nextTerritory&&nextFollowup)setImportFeedback('Cruzando as bases...','info');
+    const derived=calculateDerived(nextTerritory,nextFollowup);
+
+    Object.assign(state,{
+      territoryBase:nextTerritory,
+      followupBase:nextFollowup,
+      ...derived
+    });
+    renderAll();
+    setImportFeedback(successMessage(kind,parsed,nextTerritory,nextFollowup,derived),'success');
   }catch(error){
-    toast(error?.message||'Não foi possível ler este arquivo.',true);
+    showView('dados');
+    setImportFeedback('Erro ao importar '+label+': '+friendlyImportError(error,kind),'error');
+  }finally{
+    importBusy[kind]=false;
+    renderImportCards();
   }
 }
 
@@ -378,7 +437,7 @@ function init(){
       reloading=true;
       window.location.reload();
     });
-    navigator.serviceWorker.register('./sw.js?v=8',{updateViaCache:'none'})
+    navigator.serviceWorker.register('./sw.js?v=9',{updateViaCache:'none'})
       .then(registration=>registration.update())
       .catch(()=>{});
   }
