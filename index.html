@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#176b5b">
   <meta name="description" content="Zela: painel mobile para organizar o território e localizar quem está há mais tempo sem visita domiciliar.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cdn.sheetjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <link rel="manifest" href="manifest.webmanifest?v=8">
+  <link rel="manifest" href="manifest.webmanifest?v=9">
   <link rel="icon" href="assets/zela-icon-192-v2.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/zela-touch-180-v2.png">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
   <title>Zela</title>
 </head>
 <body>
@@ -102,6 +102,7 @@
         <h3>Duas bases do e-SUS</h3>
         <p>Os arquivos são processados no navegador. O conteúdo das planilhas não é enviado pelo Zela para serviços externos.</p>
         <div id="sourceCards" class="source-cards"></div>
+        <div id="importFeedback" class="import-feedback" aria-live="polite" role="status" hidden></div>
         <button id="loadDemo" class="secondary" type="button">Ver demonstração</button>
       </section>
 
@@ -141,10 +142,9 @@
     </form>
   </dialog>
 
-  <input id="territoryInput" type="file" accept=".csv,text/csv" hidden>
-  <input id="followupInput" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  <input id="territoryInput" type="file" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  <input id="followupInput" type="file" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script type="module" src="src/app.js?v=8"></script>
+  <script type="module" src="src/app.js?v=9"></script>
 </body>
 </html>
