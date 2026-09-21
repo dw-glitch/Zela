@@ -730,3 +730,66 @@ dialog form{padding:20px}
   cursor:wait;
   opacity:.72;
 }
+
+
+/* Zela v10 — conferência explícita das bases */
+.source-detail{
+  display:block;
+  margin-top:3px;
+  color:#eef8f5;
+  font-size:.76rem;
+  line-height:1.35;
+}
+.unmatched-help{
+  margin:-2px 0 10px;
+  line-height:1.4;
+}
+.unmatched-list{
+  display:grid;
+  gap:8px;
+}
+.unmatched-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--soft);
+}
+.unmatched-row>div{
+  min-width:0;
+}
+.unmatched-row strong,
+.unmatched-row span{
+  display:block;
+}
+.unmatched-row strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:.86rem;
+}
+.unmatched-row>div span{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:.72rem;
+  overflow-wrap:anywhere;
+}
+.unmatched-badge{
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:5px 7px;
+  background:var(--warn-soft);
+  color:var(--warn);
+  font-size:.66rem;
+  font-weight:800;
+  white-space:nowrap;
+}
+@media(max-width:390px){
+  .unmatched-row{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
