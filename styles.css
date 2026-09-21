@@ -694,3 +694,39 @@ dialog form{padding:20px}
     white-space:normal;
   }
 }
+
+
+/* Zela v9 — feedback resiliente de importação */
+.import-feedback{
+  margin:10px 0 4px;
+  padding:11px 12px;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:14px;
+  background:rgba(255,255,255,.10);
+  color:#fff;
+  text-align:left;
+  font-size:.8rem;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.import-feedback[hidden]{display:none}
+.import-feedback.success{
+  background:rgba(255,255,255,.16);
+  border-color:rgba(255,255,255,.42);
+}
+.import-feedback.error{
+  background:#fff0ef;
+  border-color:#efb7b2;
+  color:#7d2e2a;
+}
+.source-card.busy{opacity:.88}
+.source-ready{
+  display:inline-block;
+  margin-top:3px;
+  font-weight:800;
+  color:#fff;
+}
+.source-action:disabled{
+  cursor:wait;
+  opacity:.72;
+}
