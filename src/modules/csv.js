@@ -456,7 +456,7 @@ export function workbookMatrixToRows(matrix){
 
     const trimmed=row.slice(0,last+1);
     const firstNonEmpty=trimmed.find(value=>value!=null&&String(value).trim()!=='');
-    const embeddedDelimited=firstNonEmpty!=null&&countDelimiter(String(firstNonEmpty),';')>=2;
+    const embeddedDelimited=firstNonEmpty!=null&&countDelimiter(String(firstNonEmpty),';')>=4;
     if(!embeddedDelimited)return trimmed;
 
     const reconstructed=trimmed.map(value=>{
