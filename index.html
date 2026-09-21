@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#176b5b">
-  <meta name="description" content="Zela: painel visual para organizar o território e localizar rapidamente pessoas para visita.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <link rel="manifest" href="manifest.webmanifest?v=7">
+  <meta name="description" content="Zela: painel mobile para organizar o território e localizar quem está há mais tempo sem visita domiciliar.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cdn.sheetjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <link rel="manifest" href="manifest.webmanifest?v=8">
   <link rel="icon" href="assets/zela-icon-192-v2.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/zela-touch-180-v2.png">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
   <title>Zela</title>
 </head>
 <body>
@@ -35,11 +35,11 @@
           <h2 id="hello">Olá, Maria Beatriz</h2>
           <p id="todayDate" class="muted"></p>
         </div>
-        <button id="importTopBtn" class="icon-button" type="button" aria-label="Importar CSV">＋</button>
+        <button id="importTopBtn" class="icon-button" type="button" aria-label="Importar bases">＋</button>
       </div>
 
       <div id="dataStatus" class="data-status">
-        Nenhuma base importada. Toque em + para carregar o CSV.
+        Importe a base de Território e depois a base de Acompanhamentos.
       </div>
 
       <div id="visitMetrics" class="visit-metrics"></div>
@@ -48,7 +48,7 @@
         <div class="panel-head">
           <div>
             <span class="eyebrow">PRIORIDADE VISUAL</span>
-            <h3 id="focusTitle">Quem olhar primeiro</h3>
+            <h3 id="focusTitle">Quem visitar primeiro</h3>
           </div>
           <button class="text-button" data-go="visitas" type="button">Ver lista</button>
         </div>
@@ -70,10 +70,10 @@
       <div class="section-head">
         <div>
           <span class="eyebrow">VISITAS</span>
-          <h2>Encontre rápido</h2>
+          <h2>Há quanto tempo sem visita</h2>
         </div>
       </div>
-      <input id="visitSearch" class="search full" type="search" placeholder="Buscar nome ou rua" aria-label="Buscar pessoa para visita">
+      <input id="visitSearch" class="search full" type="search" placeholder="Buscar nome, CPF, CNS ou microárea" aria-label="Buscar pessoa para visita">
       <div id="visitFilters" class="chips"></div>
       <div id="visitList" class="stack"></div>
     </section>
@@ -85,7 +85,7 @@
           <h2>Todo o território</h2>
         </div>
       </div>
-      <input id="peopleSearch" class="search full" type="search" placeholder="Buscar nome, rua, CPF ou CNS" aria-label="Buscar pessoas">
+      <input id="peopleSearch" class="search full" type="search" placeholder="Buscar nome, CPF, CNS ou microárea" aria-label="Buscar pessoas">
       <div id="peopleList" class="stack"></div>
     </section>
 
@@ -99,30 +99,30 @@
 
       <section class="import-card">
         <img class="import-logo" src="assets/zela-icon-192-v2.png" alt="Logo Zela" width="104" height="104">
-        <h3>Importar relatório</h3>
-        <p>O arquivo é processado no navegador. Nenhum CSV é enviado para serviços externos.</p>
-        <button id="importNow" class="primary" type="button">Escolher CSV</button>
+        <h3>Duas bases do e-SUS</h3>
+        <p>Os arquivos são processados no navegador. O conteúdo das planilhas não é enviado pelo Zela para serviços externos.</p>
+        <div id="sourceCards" class="source-cards"></div>
         <button id="loadDemo" class="secondary" type="button">Ver demonstração</button>
       </section>
 
       <section class="panel">
         <div class="panel-head">
           <div>
-            <span class="eyebrow">FORMATO IDENTIFICADO</span>
-            <h3>Leitura do arquivo</h3>
+            <span class="eyebrow">CONCILIAÇÃO</span>
+            <h3>Qualidade da junção</h3>
           </div>
         </div>
-        <div id="formatInfo" class="format-grid"></div>
+        <div id="qualitySummary"></div>
       </section>
 
       <section class="panel">
         <div class="panel-head">
           <div>
-            <span class="eyebrow">IMPORTAÇÕES</span>
-            <h3>Último arquivo</h3>
+            <span class="eyebrow">FORMATO IDENTIFICADO</span>
+            <h3>Leitura das bases</h3>
           </div>
         </div>
-        <div id="importHistory" class="muted">Nenhuma importação nesta sessão.</div>
+        <div id="formatInfo" class="format-grid"></div>
       </section>
     </section>
   </main>
@@ -141,7 +141,10 @@
     </form>
   </dialog>
 
-  <input id="csvInput" type="file" accept=".csv,text/csv" hidden>
-  <script type="module" src="src/app.js?v=7"></script>
+  <input id="territoryInput" type="file" accept=".csv,text/csv" hidden>
+  <input id="followupInput" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="src/app.js?v=8"></script>
 </body>
 </html>

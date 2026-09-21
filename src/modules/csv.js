@@ -4,7 +4,7 @@ const commonAliases={
   cpf:['cpf'],
   cns:['cns','cartao sus','cartão sus'],
   sex:['sexo'],
-  microarea:['microarea','microárea'],
+  microarea:['microarea','microárea','microarea(s)','microárea(s)'],
   streetType:['tipo de logradouro','tipo logradouro'],
   street:['logradouro','rua'],
   number:['numero','número','nro'],
@@ -47,119 +47,168 @@ const followupAliases={
   bloodPressure:['ultima medicao de pressao arterial','última medição de pressão arterial'],
   bloodPressureDate:['data da ultima medicao de pressao arterial','data da última medição de pressão arterial'],
   status:['situacao de acompanhamento','situação de acompanhamento','situacao','situação'],
-  conditions:['condicoes de saude','condições de saúde','condicoes','condições']
+  conditions:['condicoes de saude','condições de saúde','condicoes','condições','condição de saúde','condicao de saude']
 };
 
-export const normalize=s=>String(s??'')
+export const normalize=value=>String(value??'')
   .normalize('NFD')
-  .replace(/[̀-ͯ]/g,'')
-  .replace(/s+/g,' ')
+  .replace(/[\u0300-\u036f]/g,'')
+  .replace(/\s+/g,' ')
   .trim()
   .toLowerCase();
 
-export const normalizeHeader=s=>normalize(s)
+export const normalizeHeader=value=>normalize(value)
   .replace(/[_-]+/g,' ')
-  .replace(/[^a-z0-9/ ]+/g,' ')
-  .replace(/s+/g,' ')
+  .replace(/[^a-z0-9/() ?]+/g,' ')
+  .replace(/\s+/g,' ')
   .trim();
 
-export const cleanCell=v=>String(v??'')
-  .replace(/^﻿/,'')
-  .replace(/	/g,'')
-  .trim();
+export const cleanCell=value=>{
+  if(value instanceof Date)return value;
+  return String(value??'')
+    .replace(/^\ufeff/,'')
+    .replace(/\t/g,'')
+    .trim();
+};
 
-export function detectEncoding(buf){
-  const b=new Uint8Array(buf);
-  if(b[0]===0xef&&b[1]===0xbb&&b[2]===0xbf)return'utf-8';
-  try{new TextDecoder('utf-8',{fatal:true}).decode(b);return'utf-8'}
-  catch{return'windows-1252'}
-}
-
-export function decodeBuffer(buf){
-  const enc=detectEncoding(buf);
-  return{text:new TextDecoder(enc).decode(buf),encoding:enc};
-}
-
-function countDelim(line,d){
-  let n=0,q=false;
-  for(let i=0;i<line.length;i++){
-    const c=line[i];
-    if(c==='"')q=!q;
-    else if(c===d&&!q)n++;
+export function detectEncoding(buffer){
+  const bytes=new Uint8Array(buffer);
+  if(bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf)return'utf-8';
+  try{
+    new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+    return'utf-8';
+  }catch{
+    return'windows-1252';
   }
-  return n;
+}
+
+export function decodeBuffer(buffer){
+  const encoding=detectEncoding(buffer);
+  return{text:new TextDecoder(encoding).decode(buffer),encoding};
+}
+
+function countDelimiter(line,delimiter){
+  let count=0,quoted=false;
+  for(let i=0;i<line.length;i++){
+    const char=line[i];
+    if(char==='"'){
+      if(quoted&&line[i+1]==='"')i++;
+      else quoted=!quoted;
+    }else if(char===delimiter&&!quoted){
+      count++;
+    }
+  }
+  return count;
 }
 
 export function detectDelimiter(text){
-  const lines=text.split(/?
-/).filter(Boolean).slice(0,40);
-  const ds=[';',',','	'];
-  return ds.sort((a,b)=>
-    lines.reduce((s,l)=>s+countDelim(l,b),0)-
-    lines.reduce((s,l)=>s+countDelim(l,a),0)
+  const lines=String(text??'').split(/\r?\n/).filter(line=>line.trim()).slice(0,40);
+  const delimiters=[';',',','\t'];
+  return delimiters.sort((a,b)=>
+    lines.reduce((sum,line)=>sum+countDelimiter(line,b),0)-
+    lines.reduce((sum,line)=>sum+countDelimiter(line,a),0)
   )[0]||';';
 }
 
-export function parseLine(line,delim){
-  const out=[];let cur='',q=false;
+export function parseLine(line,delimiter){
+  const output=[];
+  let current='',quoted=false;
   for(let i=0;i<=line.length;i++){
-    const c=line[i];
-    if(i===line.length||(!q&&c===delim)){out.push(cleanCell(cur));cur='';continue}
-    if(c==='"'){
-      if(q&&line[i+1]==='"'){cur+='"';i++}
-      else q=!q;
-    }else cur+=c;
+    const char=line[i];
+    if(i===line.length||(!quoted&&char===delimiter)){
+      output.push(cleanCell(current));
+      current='';
+      continue;
+    }
+    if(char==='"'){
+      if(quoted&&line[i+1]==='"'){
+        current+='"';
+        i++;
+      }else{
+        quoted=!quoted;
+      }
+    }else{
+      current+=char;
+    }
   }
-  return out;
+  return output;
 }
 
-export function detectDateFormat(values){
-  const formats=new Set();
-  for(const raw of values||[]){
-    const s=cleanCell(raw);
-    if(!s||s==='-')continue;
-    if(/^d{1,2}/d{1,2}/d{4}(?:s|$)/.test(s))formats.add('DD/MM/AAAA');
-    else if(/^d{4}-d{2}-d{2}(?:[Ts]|$)/.test(s))formats.add('AAAA-MM-DD');
-    else if(/^d{1,2}-d{1,2}-d{4}(?:s|$)/.test(s))formats.add('DD-MM-AAAA');
-  }
-  if(formats.size===0)return'não identificado';
-  if(formats.size===1)return[...formats][0];
-  return'misto: '+[...formats].join(' + ');
+function excelSerialToDate(value){
+  const serial=Number(value);
+  if(!Number.isFinite(serial)||serial<=0||serial>2958465)return null;
+  const utcMillis=Math.round((serial-25569)*86400000);
+  const utc=new Date(utcMillis);
+  if(Number.isNaN(utc.getTime()))return null;
+  return new Date(utc.getUTCFullYear(),utc.getUTCMonth(),utc.getUTCDate());
 }
 
 export function parseDate(value){
-  const s=cleanCell(value);
-  if(!s||s==='-')return null;
-  let m=s.match(/^(d{1,2})/(d{1,2})/(d{4})(?:s+.*)?$/);
-  if(m){
-    const[,d,mo,y]=m; const date=new Date(+y,+mo-1,+d);
-    return date.getFullYear()===+y&&date.getMonth()===+mo-1&&date.getDate()===+d?date:null;
+  if(value instanceof Date){
+    if(Number.isNaN(value.getTime()))return null;
+    return new Date(value.getFullYear(),value.getMonth(),value.getDate());
   }
-  m=s.match(/^(d{4})-(d{2})-(d{2})(?:[Ts].*)?$/);
-  if(m){
-    const[,y,mo,d]=m; const date=new Date(+y,+mo-1,+d);
-    return date.getFullYear()===+y&&date.getMonth()===+mo-1&&date.getDate()===+d?date:null;
+  if(typeof value==='number')return excelSerialToDate(value);
+
+  const raw=String(value??'').trim();
+  if(!raw||raw==='-')return null;
+  if(/^\d+(?:[.,]\d+)?$/.test(raw)){
+    const serial=excelSerialToDate(Number(raw.replace(',','.')));
+    if(serial)return serial;
   }
-  m=s.match(/^(d{1,2})-(d{1,2})-(d{4})(?:s+.*)?$/);
-  if(m){
-    const[,d,mo,y]=m; const date=new Date(+y,+mo-1,+d);
-    return date.getFullYear()===+y&&date.getMonth()===+mo-1&&date.getDate()===+d?date:null;
+
+  let match=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+.*)?$/);
+  if(match){
+    const[,day,month,year]=match;
+    const date=new Date(+year,+month-1,+day);
+    return date.getFullYear()===+year&&date.getMonth()===+month-1&&date.getDate()===+day?date:null;
+  }
+
+  match=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if(match){
+    const[,year,month,day]=match;
+    const date=new Date(+year,+month-1,+day);
+    return date.getFullYear()===+year&&date.getMonth()===+month-1&&date.getDate()===+day?date:null;
+  }
+
+  match=raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+.*)?$/);
+  if(match){
+    const[,day,month,year]=match;
+    const date=new Date(+year,+month-1,+day);
+    return date.getFullYear()===+year&&date.getMonth()===+month-1&&date.getDate()===+day?date:null;
   }
   return null;
 }
 
 export function formatDate(value){
-  const d=value instanceof Date?value:parseDate(value);
-  return d?new Intl.DateTimeFormat('pt-BR').format(d):'—';
+  const date=value instanceof Date?value:parseDate(value);
+  return date?new Intl.DateTimeFormat('pt-BR').format(date):'—';
+}
+
+export function detectDateFormat(values){
+  const formats=new Set();
+  for(const value of values||[]){
+    if(value instanceof Date){formats.add('Data do Excel');continue;}
+    if(typeof value==='number'){formats.add('Serial do Excel');continue;}
+    const text=String(value??'').trim();
+    if(!text||text==='-')continue;
+    if(/^\d{1,2}\/\d{1,2}\/\d{4}(?:\s|$)/.test(text))formats.add('DD/MM/AAAA');
+    else if(/^\d{4}-\d{2}-\d{2}(?:[T\s]|$)/.test(text))formats.add('AAAA-MM-DD');
+    else if(/^\d{1,2}-\d{1,2}-\d{4}(?:\s|$)/.test(text))formats.add('DD-MM-AAAA');
+    else if(/^\d+(?:[.,]\d+)?$/.test(text)&&parseDate(text))formats.add('Serial do Excel');
+  }
+  if(!formats.size)return'não identificado';
+  if(formats.size===1)return[...formats][0];
+  return'misto: '+[...formats].join(' + ');
 }
 
 function buildMap(header,aliases){
   const map={};
   const normalized=header.map(normalizeHeader);
-  for(const[k,variants]of Object.entries(aliases)){
+  for(const[key,variants]of Object.entries(aliases)){
     const targets=variants.map(normalizeHeader);
-    const index=normalized.findIndex(h=>targets.includes(h));
-    if(index>=0)map[k]=index;
+    const index=normalized.findIndex(item=>targets.includes(item));
+    if(index>=0)map[key]=index;
   }
   return map;
 }
@@ -168,115 +217,133 @@ function scoreHeader(row,aliases){
   const normalized=row.map(normalizeHeader);
   let score=0;
   for(const variants of Object.values(aliases)){
-    if(variants.some(v=>normalized.includes(normalizeHeader(v))))score++;
+    if(variants.some(variant=>normalized.includes(normalizeHeader(variant))))score++;
   }
   return score;
 }
 
 function detectReportType(header){
-  const h=header.map(normalizeHeader);
-  if(h.includes(normalizeHeader('Dias desde a última visita domiciliar'))||h.includes(normalizeHeader('Meses desde a última visita domiciliar')))return'followup';
-  if(h.includes(normalizeHeader('NOME DO RESPONSÁVEL FAMILIAR'))||h.includes(normalizeHeader('É O RESPONSÁVEL FAMILIAR?')))return'territory';
+  const normalized=header.map(normalizeHeader);
+  const visitDays=normalizeHeader('Dias desde a última visita domiciliar');
+  const visitMonths=normalizeHeader('Meses desde a última visita domiciliar');
+  if(normalized.includes(visitDays)||normalized.includes(visitMonths))return'followup';
+  if(normalized.includes(normalizeHeader('NOME DO RESPONSÁVEL FAMILIAR'))||normalized.includes(normalizeHeader('É O RESPONSÁVEL FAMILIAR?')))return'territory';
   return'unknown';
+}
+
+function metaPair(row){
+  const first=String(row[0]??'');
+  if(first.includes(';')){
+    const parsed=parseLine(first,';');
+    return[parsed[0]??'',parsed[1]??'',parsed[2]??'',parsed[3]??'',...row.slice(1)];
+  }
+  return row;
 }
 
 function extractMeta(rows,headerIndex,reportType){
   const meta={reportType};
   for(let i=0;i<headerIndex;i++){
-    const row=rows[i].map(cleanCell);
+    const row=metaPair(rows[i].map(cleanCell));
     const first=normalizeHeader(row[0]);
     if(!first)continue;
-    if(first==='microarea'||first==='microarea s')meta.microarea=cleanCell(row[1]);
-    if(first==='lista tematica')meta.listTheme=cleanCell(row[1]);
-    if(first==='periodo do ultimo atendimento')meta.period=cleanCell(row[1]);
+    if(first==='microarea'||first==='microarea s'||first==='microarea(s)')meta.microarea=String(cleanCell(row[1]));
+    if(first.startsWith('equipe responsavel'))meta.team=String(cleanCell(row[1]));
+    if(first==='lista tematica')meta.listTheme=String(cleanCell(row[1]));
+    if(first==='periodo do ultimo atendimento')meta.period=String(cleanCell(row[1]));
     if(first==='gerado em'){
       const date=cleanCell(row[1]);
       const time=cleanCell(row[3]);
       meta.generatedDate=date;
       meta.generatedAt=[date,time].filter(Boolean).join(' ');
     }
-    if(first.includes('relatorio gerado a partir do acompanhamento de condicoes de saude'))meta.reportTitle=cleanCell(row[0]);
-    if(first.includes('acompanhamento do territorio'))meta.reportTitle=cleanCell(row[0]);
-    if(first.startsWith('unidade de saude'))meta.unit=cleanCell(row[0]).replace(/^UNIDADE DE SAÚDEs*/i,'').trim();
+    if(first.includes('relatorio gerado a partir do acompanhamento de condicoes de saude'))meta.reportTitle=String(cleanCell(row[0]));
+    if(first.includes('acompanhamento do territorio'))meta.reportTitle=String(cleanCell(row[0]));
+    if(first.startsWith('unidade de saude'))meta.unit=String(cleanCell(row[0])).replace(/^UNIDADE DE SAÚDE\s*/i,'').trim();
   }
   return meta;
 }
 
-function rowValue(row,map,key){return map[key]==null?'':cleanCell(row[map[key]]);}
+function rowValue(row,map,key){
+  if(map[key]==null)return'';
+  return cleanCell(row[map[key]]);
+}
 
-function standardizeRow(row,map,reportType,index){
+function standardizeRow(row,map,reportType,index,meta){
   const base={
     id:reportType+'-'+index,
     source:reportType,
-    name:rowValue(row,map,'name'),
+    name:String(rowValue(row,map,'name')||''),
     birth:rowValue(row,map,'birth'),
-    cpf:rowValue(row,map,'cpf'),
-    cns:rowValue(row,map,'cns'),
-    sex:rowValue(row,map,'sex'),
-    microarea:rowValue(row,map,'microarea'),
-    streetType:rowValue(row,map,'streetType'),
-    street:rowValue(row,map,'street'),
-    number:rowValue(row,map,'number'),
-    complement:rowValue(row,map,'complement'),
-    district:rowValue(row,map,'district'),
-    city:rowValue(row,map,'city'),
-    state:rowValue(row,map,'state'),
-    zip:rowValue(row,map,'zip'),
-    phoneMobile:rowValue(row,map,'phoneMobile'),
-    phoneHome:rowValue(row,map,'phoneHome'),
-    phoneContact:rowValue(row,map,'phoneContact')
+    cpf:String(rowValue(row,map,'cpf')||''),
+    cns:String(rowValue(row,map,'cns')||''),
+    sex:String(rowValue(row,map,'sex')||''),
+    microarea:String(rowValue(row,map,'microarea')||meta.microarea||''),
+    streetType:String(rowValue(row,map,'streetType')||''),
+    street:String(rowValue(row,map,'street')||''),
+    number:String(rowValue(row,map,'number')||''),
+    complement:String(rowValue(row,map,'complement')||''),
+    district:String(rowValue(row,map,'district')||''),
+    city:String(rowValue(row,map,'city')||''),
+    state:String(rowValue(row,map,'state')||''),
+    zip:String(rowValue(row,map,'zip')||''),
+    phoneMobile:String(rowValue(row,map,'phoneMobile')||''),
+    phoneHome:String(rowValue(row,map,'phoneHome')||''),
+    phoneContact:String(rowValue(row,map,'phoneContact')||'')
   };
+
   if(reportType==='territory'){
     return{
       ...base,
-      reference:rowValue(row,map,'reference'),
-      responsibleFlag:rowValue(row,map,'responsibleFlag'),
-      responsibleId:rowValue(row,map,'responsibleId'),
-      responsibleName:rowValue(row,map,'responsibleName')
+      reference:String(rowValue(row,map,'reference')||''),
+      responsibleFlag:String(rowValue(row,map,'responsibleFlag')||''),
+      responsibleId:String(rowValue(row,map,'responsibleId')||''),
+      responsibleName:String(rowValue(row,map,'responsibleName')||'')
     };
   }
-  if(reportType==='followup'){
-    return{
-      ...base,
-      ageText:rowValue(row,map,'ageText'),
-      genderIdentity:rowValue(row,map,'genderIdentity'),
-      race:rowValue(row,map,'race'),
-      bolsa:rowValue(row,map,'bolsa'),
-      bolsaValidity:rowValue(row,map,'bolsaValidity'),
-      medicalDays:rowValue(row,map,'medicalDays'),
-      medicalMonths:rowValue(row,map,'medicalMonths'),
-      nursingDays:rowValue(row,map,'nursingDays'),
-      nursingMonths:rowValue(row,map,'nursingMonths'),
-      dentalDays:rowValue(row,map,'dentalDays'),
-      dentalMonths:rowValue(row,map,'dentalMonths'),
-      visitDays:rowValue(row,map,'visitDays'),
-      visitMonths:rowValue(row,map,'visitMonths'),
-      weight:rowValue(row,map,'weight'),
-      height:rowValue(row,map,'height'),
-      weightHeightDate:rowValue(row,map,'weightHeightDate'),
-      bloodPressure:rowValue(row,map,'bloodPressure'),
-      bloodPressureDate:rowValue(row,map,'bloodPressureDate'),
-      followupStatus:rowValue(row,map,'status'),
-      conditions:rowValue(row,map,'conditions')
-    };
-  }
-  return base;
+
+  return{
+    ...base,
+    ageText:String(rowValue(row,map,'ageText')||''),
+    genderIdentity:String(rowValue(row,map,'genderIdentity')||''),
+    race:String(rowValue(row,map,'race')||''),
+    bolsa:String(rowValue(row,map,'bolsa')||''),
+    bolsaValidity:String(rowValue(row,map,'bolsaValidity')||''),
+    medicalDays:String(rowValue(row,map,'medicalDays')||''),
+    medicalMonths:String(rowValue(row,map,'medicalMonths')||''),
+    nursingDays:String(rowValue(row,map,'nursingDays')||''),
+    nursingMonths:String(rowValue(row,map,'nursingMonths')||''),
+    dentalDays:String(rowValue(row,map,'dentalDays')||''),
+    dentalMonths:String(rowValue(row,map,'dentalMonths')||''),
+    visitDays:String(rowValue(row,map,'visitDays')||''),
+    visitMonths:String(rowValue(row,map,'visitMonths')||''),
+    weight:String(rowValue(row,map,'weight')||''),
+    height:String(rowValue(row,map,'height')||''),
+    weightHeightDate:rowValue(row,map,'weightHeightDate'),
+    bloodPressure:String(rowValue(row,map,'bloodPressure')||''),
+    bloodPressureDate:rowValue(row,map,'bloodPressureDate'),
+    followupStatus:String(rowValue(row,map,'status')||''),
+    conditions:String(rowValue(row,map,'conditions')||'')
+  };
 }
 
 export function parseRows(rows){
-  const cleanRows=rows.map(r=>r.map(cleanCell));
-  let headerIndex=-1,best=0;
-  cleanRows.forEach((row,i)=>{
-    const score=Math.max(scoreHeader(row,territoryAliases),scoreHeader(row,followupAliases));
-    if(score>best&&row.filter(Boolean).length>=4){best=score;headerIndex=i;}
+  const normalizedRows=(rows||[]).map(row=>(Array.isArray(row)?row:[row]).map(cleanCell));
+  let headerIndex=-1,bestScore=0;
+  normalizedRows.forEach((row,index)=>{
+    const expanded=row.length===1&&String(row[0]??'').includes(';')?parseLine(String(row[0]),';'):row;
+    const score=Math.max(scoreHeader(expanded,territoryAliases),scoreHeader(expanded,followupAliases));
+    if(score>bestScore&&expanded.filter(Boolean).length>=4){
+      bestScore=score;
+      headerIndex=index;
+    }
   });
   if(headerIndex<0)throw new Error('Não foi possível localizar a linha de cabeçalho do relatório do e-SUS.');
 
-  const header=cleanRows[headerIndex];
+  let header=normalizedRows[headerIndex];
+  if(header.length===1&&String(header[0]??'').includes(';'))header=parseLine(String(header[0]),';');
   const reportType=detectReportType(header);
-  if(reportType==='unknown'){
-    throw new Error('O arquivo foi lido, mas não corresponde aos relatórios Território ou Acompanhamentos / Condições de saúde reconhecidos pelo Zela.');
-  }
+  if(reportType==='unknown')throw new Error('O arquivo foi lido, mas não corresponde aos relatórios Território ou Acompanhamentos / Condições de saúde reconhecidos pelo Zela.');
+
   const aliases=reportType==='territory'?territoryAliases:followupAliases;
   const map=buildMap(header,aliases);
   if(map.name==null)throw new Error('A coluna de nome do cidadão não foi reconhecida.');
@@ -285,58 +352,112 @@ export function parseRows(rows){
     throw new Error('O relatório de acompanhamento foi reconhecido, mas não contém “Dias” nem “Meses desde a última visita domiciliar”.');
   }
 
-  const data=cleanRows.slice(headerIndex+1)
-    .filter(r=>r.some(Boolean)&&rowValue(r,map,'name'))
-    .map((r,idx)=>standardizeRow(r,map,reportType,idx));
-  const meta=extractMeta(cleanRows,headerIndex,reportType);
+  const meta=extractMeta(normalizedRows,headerIndex,reportType);
+  const data=[];
+  for(let index=headerIndex+1;index<normalizedRows.length;index++){
+    let row=normalizedRows[index];
+    if(row.length===1&&String(row[0]??'').includes(';'))row=parseLine(String(row[0]),';');
+    if(!row.some(Boolean)||!rowValue(row,map,'name'))continue;
+    data.push(standardizeRow(row,map,reportType,data.length,meta));
+  }
+
   const dateValues=[];
-  for(const r of data.slice(0,1000)){
-    if(r.birth)dateValues.push(r.birth);
-    if(r.weightHeightDate)dateValues.push(r.weightHeightDate);
-    if(r.bloodPressureDate)dateValues.push(r.bloodPressureDate);
+  for(const row of data.slice(0,1000)){
+    if(row.birth)dateValues.push(row.birth);
+    if(row.weightHeightDate)dateValues.push(row.weightHeightDate);
+    if(row.bloodPressureDate)dateValues.push(row.bloodPressureDate);
   }
   if(meta.generatedAt)dateValues.push(meta.generatedAt);
   meta.dateFormat=detectDateFormat(dateValues);
   meta.hasVisitElapsed=reportType==='followup'&&(map.visitDays!=null||map.visitMonths!=null);
-  meta.recognizedColumns=Object.entries(map).map(([field,index])=>({field,column:header[index]}));
+  meta.hasConditions=map.conditions!=null;
+  meta.recognizedColumns=Object.entries(map).map(([field,index])=>({field,column:String(header[index]??'')}));
 
-  return{headerIndex,header,map,data,meta,reportType};
+  return{headerIndex,header,map,data,meta,reportType,score:bestScore};
 }
 
 export function parseText(text){
   const delimiter=detectDelimiter(text);
-  const rows=text.split(/?
-/).filter(line=>line.trim()).map(line=>parseLine(line,delimiter));
+  const rows=String(text??'').split(/\r?\n/).filter(line=>line.trim()).map(line=>parseLine(line,delimiter));
   return{...parseRows(rows),delimiter};
 }
 
 function workbookMatrixToRows(matrix){
   const rows=(matrix||[]).map(row=>Array.isArray(row)?row:[]);
-  const semicolonRich=rows.slice(0,40).some(row=>row.some(cell=>String(cell??'').includes(';')));
-  if(!semicolonRich)return rows.map(row=>row.map(cleanCell));
+  const semicolonRich=rows.slice(0,50).some(row=>row.some(cell=>String(cell??'').includes(';')));
+  if(!semicolonRich)return rows;
+
   return rows.map(row=>{
     let last=row.length-1;
     while(last>=0&&(row[last]==null||String(row[last]).trim()===''))last--;
     if(last<0)return[];
-    // O XLSX real do e-SUS pode trazer decimais brasileiros separados em células (ex.: 82 | 00;158 | 00).
-    // Reunir as células com vírgula restaura a linha semicolon-delimited original antes do parsing.
-    const reconstructed=row.slice(0,last+1).map(v=>cleanCell(v)).join(',');
+    const reconstructed=row.slice(0,last+1).map(value=>{
+      if(value instanceof Date)return formatDate(value);
+      return String(value??'').trim();
+    }).join(',');
     return parseLine(reconstructed,';');
   });
 }
 
-export async function parseFile(file){
-  const name=String(file?.name||'').toLowerCase();
-  const buffer=await file.arrayBuffer();
-  if(name.endsWith('.xlsx')||name.endsWith('.xls')){
-    if(!globalThis.XLSX?.read)throw new Error('O leitor de Excel ainda não carregou. Verifique a conexão e tente novamente.');
-    const workbook=globalThis.XLSX.read(buffer,{type:'array',raw:false,cellDates:false});
-    const sheetName=workbook.SheetNames?.[0];
-    if(!sheetName)throw new Error('A planilha não possui uma aba legível.');
-    const matrix=globalThis.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,raw:false,defval:''});
-    const rows=workbookMatrixToRows(matrix);
-    return{...parseRows(rows),encoding:'XLSX',delimiter:';',fileName:file.name,size:file.size};
+function parseWorkbook(workbook,expectedType){
+  const candidates=[];
+  const failures=[];
+  for(const sheetName of workbook.SheetNames||[]){
+    try{
+      const matrix=globalThis.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{
+        header:1,
+        raw:false,
+        defval:'',
+        dateNF:'dd/mm/yyyy'
+      });
+      const parsed=parseRows(workbookMatrixToRows(matrix));
+      if(expectedType&&parsed.reportType!==expectedType)continue;
+      candidates.push({...parsed,sheetName});
+    }catch(error){
+      failures.push({sheetName,message:error?.message||String(error)});
+    }
   }
+  if(!candidates.length){
+    if(expectedType){
+      const label=expectedType==='territory'?'Território / acompanhamento da microárea':'Acompanhamentos / Condições de saúde / Geral';
+      throw new Error('Não foi encontrada uma aba compatível com “'+label+'”.');
+    }
+    throw new Error(failures[0]?.message||'A planilha não possui uma aba compatível com os relatórios do e-SUS.');
+  }
+  candidates.sort((a,b)=>b.data.length-a.data.length||b.score-a.score);
+  return candidates[0];
+}
+
+export async function parseFile(file,expectedType=''){
+  if(!file)throw new Error('Nenhum arquivo foi selecionado.');
+  const name=String(file.name||'').toLowerCase();
+  const supported=name.endsWith('.csv')||name.endsWith('.xls')||name.endsWith('.xlsx');
+  if(!supported)throw new Error('Formato não suportado. Use um arquivo .csv, .xls ou .xlsx exportado pelo e-SUS.');
+
+  const buffer=await file.arrayBuffer();
+  if(name.endsWith('.xls')||name.endsWith('.xlsx')){
+    if(!globalThis.XLSX?.read)throw new Error('O leitor de Excel não está disponível. Conecte-se à internet uma vez para carregar o componente e tente novamente.');
+    let workbook;
+    try{
+      workbook=globalThis.XLSX.read(buffer,{type:'array',cellDates:true});
+    }catch{
+      throw new Error('Não foi possível abrir esta planilha do Excel. Confirme se o arquivo não está corrompido e foi exportado pelo e-SUS.');
+    }
+    const parsed=parseWorkbook(workbook,expectedType);
+    return{
+      ...parsed,
+      encoding:'Excel',
+      delimiter:'—',
+      fileName:file.name,
+      size:file.size
+    };
+  }
+
   const{encoding,text}=decodeBuffer(buffer);
-  return{...parseText(text),encoding,fileName:file.name,size:file.size};
+  const parsed=parseText(text);
+  if(expectedType&&parsed.reportType!==expectedType){
+    const expected=expectedType==='territory'?'Território / acompanhamento da microárea':'Acompanhamentos / Condições de saúde / Geral';
+    throw new Error('Este arquivo foi reconhecido como outro relatório. Selecione aqui a base “'+expected+'”.');
+  }
+  return{...parsed,encoding,fileName:file.name,size:file.size};
 }

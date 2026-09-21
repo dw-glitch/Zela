@@ -3,8 +3,8 @@
 <title>Testes Zela</title>
 <pre id="out"></pre>
 <script type="module">
-import{parseText,parseDate,detectDateFormat}from'../src/modules/csv.js';
-import{buildPeople,getVisitState}from'../src/modules/model.js';
+import{parseText,parseDate,detectDateFormat,normalize}from'../src/modules/csv.js';
+import{mergeBases,validCpf,validCns,getVisitState,inferLastVisitDate}from'../src/modules/model.js';
 
 const out=document.querySelector('#out');
 let pass=0,fail=0;
@@ -18,38 +18,71 @@ t('data brasileira DD/MM/AAAA',()=>ok(parseDate('16/09/2026') instanceof Date));
 t('data ISO AAAA-MM-DD',()=>ok(parseDate('2026-09-16') instanceof Date));
 t('data DD-MM-AAAA',()=>ok(parseDate('16-09-2026') instanceof Date));
 t('data inválida não é aceita',()=>ok(parseDate('31/02/2026')===null));
+t('serial Excel vira data correta',()=>{
+  const date=parseDate(45916);
+  ok(date instanceof Date);
+  ok(date.getFullYear()===2025||date.getFullYear()===2026);
+});
 t('identifica formato brasileiro',()=>ok(detectDateFormat(['16/09/2026','01/01/2000'])==='DD/MM/AAAA'));
+t('normalização ignora acentos e caixa',()=>ok(normalize(' JOÃO  DA SILVA ')==='joao da silva'));
+t('CPF formatado é preservado como 11 dígitos',()=>ok(validCpf('123.456.789-00')==='12345678900'));
+t('CNS é preservado como 15 dígitos',()=>ok(validCns('123 4567 8901 2345')==='123456789012345'));
 
-const sample=[
-  'e-SUS - Atenção Primária;;;;;;;;',
-  'Microárea;04;;;;;;;',
-  'Gerado em ;16/09/2026; às ;21:52;;;;',
-  'NOME CIDADÃO;DATA DE NASCIMENTO;LOGRADOURO;DATA DA ÚLTIMA VISITA;PRÓXIMA VISITA',
-  'PESSOA TESTE;01/01/2000;RUA A;01/08/2026;20/09/2026'
+const territoryText=[
+  'ACOMPANHAMENTO DO TERRITÓRIO;;;;;;;;;;;;;;',
+  'Microárea;04;;;;;;;;;;;;;',
+  'Gerado em;21/09/2026;às;10:00;;;;;;;;;;;',
+  'TIPO DE LOGRADOURO;LOGRADOURO;NÚMERO;BAIRRO;NOME CIDADÃO;DATA DE NASCIMENTO;CPF;CNS;É O RESPONSÁVEL FAMILIAR?;CPF/CNS RESPONSÁVEL FAMILIAR;NOME DO RESPONSÁVEL FAMILIAR',
+  'RUA;ALFA;10;CENTRO;PESSOA CPF;01/01/1990;123.456.789-00;;SIM;;',
+  'RUA;BETA;20;CENTRO;PESSOA CNS;02/02/1980;;123456789012345;SIM;;',
+  'RUA;GAMA;30;CENTRO;JOÃO DA SILVA;03/03/1970;;;SIM;;',
+  'RUA;DELTA;40;CENTRO;SEM ACOMPANHAMENTO;04/04/1960;;;SIM;;'
 ].join('\n');
 
-t('localiza cabeçalho após preâmbulo',()=>{
-  const parsed=parseText(sample);
-  ok(parsed.data.length===1);
-  ok(parsed.meta.microarea==='04');
-  ok(parsed.meta.dateFormat==='DD/MM/AAAA');
+const followupText=[
+  'RELATÓRIO GERADO A PARTIR DO ACOMPANHAMENTO DE CONDIÇÕES DE SAÚDE;;;;;;;;;;;;;;;;',
+  'Gerado em;21/09/2026;às;10:00;;;;;;;;;;;;;',
+  'NOME CIDADÃO;DATA DE NASCIMENTO;CPF;CNS;MICROÁREA;DIAS DESDE A ÚLTIMA VISITA DOMICILIAR;MESES DESDE A ÚLTIMA VISITA DOMICILIAR',
+  'PESSOA CPF;01/01/1990;12345678900;;04;20;0',
+  'PESSOA CNS;02/02/1980;;123456789012345;04;5;2',
+  'Joao da Silva;03/03/1970;;;04;12;1',
+  'FORA DO TERRITORIO;05/05/1950;98765432100;;05;1;0'
+].join('\n');
+
+const territory=parseText(territoryText);
+const followup=parseText(followupText);
+
+t('Território é reconhecido após preâmbulo',()=>{
+  ok(territory.reportType==='territory');
+  ok(territory.data.length===4);
+  ok(territory.meta.microarea==='04');
 });
 
-t('reconhece colunas de visita',()=>{
-  const parsed=parseText(sample);
-  ok(parsed.data[0].lastVisit==='01/08/2026');
-  ok(parsed.data[0].nextVisit==='20/09/2026');
-  ok(parsed.meta.hasVisitDate===true);
+t('Acompanhamento é reconhecido e encontra visita',()=>{
+  ok(followup.reportType==='followup');
+  ok(followup.data.length===4);
+  ok(followup.meta.hasVisitElapsed===true);
 });
 
-t('marca visita vencida somente com data prevista explícita',()=>{
-  const people=buildPeople([{name:'Pessoa A',birth:'01/01/2000',cpf:'-',cns:'-',street:'RUA A',lastVisit:'01/08/2026',nextVisit:'10/09/2026'}]);
-  ok(getVisitState(people[0],new Date(2026,8,18)).key==='agora');
-});
+const merged=mergeBases(territory,followup,new Date(2026,8,21));
 
-t('última visita sem próxima data vira histórico, não atraso',()=>{
-  const people=buildPeople([{name:'Pessoa B',birth:'01/01/2000',cpf:'-',cns:'-',street:'RUA B',lastVisit:'01/08/2026',nextVisit:''}]);
-  ok(getVisitState(people[0],new Date(2026,8,18)).key==='historico');
+t('vincula primeiro por CPF',()=>ok(merged.stats.matchMethods.cpf===1));
+t('vincula depois por CNS',()=>ok(merged.stats.matchMethods.cns===1));
+t('fallback conservador usa nome + nascimento',()=>ok(merged.stats.matchMethods['nome+nascimento']===1));
+t('pessoa sem acompanhamento permanece no painel',()=>ok(merged.stats.territoryOnly===1));
+t('acompanhamento sem território fica separado',()=>ok(merged.stats.followupOnlyRecords===1));
+t('não duplica cidadão no painel',()=>ok(merged.people.length===4));
+t('calcula visita a partir de dias/meses do relatório',()=>{
+  const person=merged.people.find(item=>item.name==='PESSOA CPF');
+  ok(person.daysSinceVisit===20);
+});
+t('sem acompanhamento vira Sem visita localizada',()=>{
+  const person=merged.people.find(item=>item.name==='SEM ACOMPANHAMENTO');
+  ok(getVisitState(person).key==='sem-visita');
+});
+t('inferência de visita usa data de geração',()=>{
+  const date=inferLastVisitDate({generatedDate:'21/09/2026'},{visitDays:'20',visitMonths:'0'});
+  ok(date.getDate()===1&&date.getMonth()===8&&date.getFullYear()===2026);
 });
 
 out.textContent+='\n'+pass+' passaram · '+fail+' falharam';

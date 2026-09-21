@@ -1,42 +1,57 @@
-import{parseFile,parseDate,formatDate}from'./modules/csv.js';
-import{buildPeople,getVisitState,maskId}from'./modules/model.js';
+import{parseFile,formatDate,normalize}from'./modules/csv.js';
+import{mergeBases,getVisitState,maskId,sortByLongestWithoutVisit}from'./modules/model.js';
 import{demoRows}from'./modules/demo.js';
 
-const $=s=>document.querySelector(s);
-const $$=s=>[...document.querySelectorAll(s)];
-const state={rows:[],people:[],meta:{},imports:[],visitFilter:'todos'};
+const $=selector=>document.querySelector(selector);
+const $$=selector=>[...document.querySelectorAll(selector)];
 
-const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({
+const state={
+  territoryBase:null,
+  followupBase:null,
+  people:[],
+  followupOnlyPeople:[],
+  stats:null,
+  inconsistencies:[],
+  visitFilter:'todos',
+  conditionFilter:'todos'
+};
+
+const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({
   '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
-}[c]));
+}[char]));
 
-const formatNumber=n=>new Intl.NumberFormat('pt-BR').format(n||0);
+const formatNumber=value=>new Intl.NumberFormat('pt-BR').format(value||0);
+const formatDateSafe=value=>value?formatDate(value):'—';
 
-function recalc(){
-  state.people=buildPeople(state.rows);
-  renderAll();
+function todayStart(){
+  const now=new Date();
+  return new Date(now.getFullYear(),now.getMonth(),now.getDate());
 }
 
 function showView(view){
-  $$('.view').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
-  $$('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.viewTarget===view));
+  $$('.view').forEach(element=>element.classList.toggle('active',element.dataset.view===view));
+  $$('.nav-item').forEach(element=>element.classList.toggle('active',element.dataset.viewTarget===view));
   window.scrollTo(0,0);
+}
+
+function recalc(){
+  if(!state.territoryBase){
+    state.people=[];
+    state.followupOnlyPeople=[];
+    state.stats=null;
+    state.inconsistencies=[];
+  }else{
+    const merged=mergeBases(state.territoryBase,state.followupBase,todayStart());
+    state.people=merged.people;
+    state.followupOnlyPeople=merged.followupOnlyPeople;
+    state.stats=merged.stats;
+    state.inconsistencies=merged.inconsistencies;
+  }
+  renderAll();
 }
 
 function statusOf(person){
   return getVisitState(person);
-}
-
-function sortPeopleForVisits(list){
-  const order={agora:0,breve:1,historico:2,programada:3,'sem-data':4};
-  return [...list].sort((a,b)=>{
-    const sa=statusOf(a),sb=statusOf(b);
-    const group=(order[sa.key]??9)-(order[sb.key]??9);
-    if(group)return group;
-    if(sa.key==='historico')return sa.sortValue-sb.sortValue;
-    if(sa.sortValue!==sb.sortValue)return sa.sortValue-sb.sortValue;
-    return a.name.localeCompare(b.name,'pt-BR');
-  });
 }
 
 function renderAll(){
@@ -47,88 +62,89 @@ function renderAll(){
   renderVisitFilters();
   renderVisitList();
   renderPeople();
+  renderImportCards();
+  renderQuality();
   renderFormatInfo();
-  renderImportHistory();
 }
 
 function renderHeader(){
-  $('#microareaLabel').textContent=state.meta.microarea?'MICROÁREA '+state.meta.microarea:'MICROÁREA —';
+  const microarea=state.territoryBase?.meta?.microarea;
+  $('#microareaLabel').textContent=microarea?'MICROÁREA '+microarea:'MICROÁREA —';
 
-  if(!state.people.length){
-    $('#dataStatus').textContent='Nenhuma base importada. Toque em + para carregar o CSV.';
+  if(!state.territoryBase){
+    $('#dataStatus').textContent='Importe a base de Território e depois a base de Acompanhamentos para montar o painel.';
     return;
   }
 
-  const generated=state.meta.generatedAt?' · gerado em '+state.meta.generatedAt:'';
-  $('#dataStatus').innerHTML='<strong>'+formatNumber(state.people.length)+' pessoas</strong> no painel'+generated+'.';
+  const territory=state.stats?.territoryCount??state.territoryBase.data.length;
+  if(!state.followupBase){
+    $('#dataStatus').innerHTML='<strong>'+formatNumber(territory)+' pessoas</strong> no Território · aguardando Acompanhamentos para calcular o tempo sem visita.';
+    return;
+  }
+
+  $('#dataStatus').innerHTML=
+    '<strong>'+formatNumber(territory)+' pessoas</strong> no Território · '+
+    '<strong>'+formatNumber(state.stats?.matchedCount)+' conciliadas</strong> · '+
+    formatNumber(state.stats?.territoryOnly)+' sem acompanhamento localizado.';
 }
 
-function metricCard(count,label,filter,icon,kind){
-  return '<button class="metric-card '+(kind||'')+'" type="button" data-visit-filter="'+filter+'">'+
-    '<span class="metric-icon">'+icon+'</span>'+
-    '<b>'+formatNumber(count)+'</b>'+
-    '<span>'+label+'</span>'+
-  '</button>';
+function metricCard(count,label,filter,kind=''){
+  return '<button class="metric-card '+kind+'" type="button" data-visit-filter="'+filter+'">'+
+    '<b>'+formatNumber(count)+'</b><span>'+esc(label)+'</span></button>';
 }
 
 function renderMetrics(){
-  const statuses=state.people.map(statusOf);
-  const due=statuses.filter(s=>s.key==='agora').length;
-  const soon=statuses.filter(s=>s.key==='breve').length;
-  const history=statuses.filter(s=>s.key==='historico').length;
-  const missing=statuses.filter(s=>s.key==='sem-data').length;
+  const people=state.people;
+  const missing=people.filter(person=>!Number.isFinite(person.daysSinceVisit)).length;
+  const d365=people.filter(person=>Number.isFinite(person.daysSinceVisit)&&person.daysSinceVisit>=365).length;
+  const d180=people.filter(person=>Number.isFinite(person.daysSinceVisit)&&person.daysSinceVisit>=180&&person.daysSinceVisit<365).length;
+  const d90=people.filter(person=>Number.isFinite(person.daysSinceVisit)&&person.daysSinceVisit>=90&&person.daysSinceVisit<180).length;
 
   $('#visitMetrics').innerHTML=
-    metricCard(due,'Visitar agora','agora','!','due')+
-    metricCard(soon,'Em até 7 dias','breve','↗','soon')+
-    metricCard(history,'Com última visita','historico','◷','')+
-    metricCard(missing,'Sem data de visita','sem-data','—','');
+    metricCard(missing,'Sem visita localizada','sem-visita','due')+
+    metricCard(d365,'365+ dias','365+','due')+
+    metricCard(d180,'180–364 dias','180-364','soon')+
+    metricCard(d90,'90–179 dias','90-179','');
 }
 
 function personCard(person){
-  const s=statusOf(person);
-  const address=person.address||'Endereço não informado';
+  const status=statusOf(person);
+  const subtitle=[
+    person.microarea?'Microárea '+person.microarea:'',
+    person.address||''
+  ].filter(Boolean).join(' · ')||'Endereço não informado';
   return '<button class="person-card" type="button" data-person="'+esc(person.key)+'">'+
-    '<div class="person-main">'+
-      '<h3>'+esc(person.name)+'</h3>'+
-      '<p>'+esc(address)+'</p>'+
-    '</div>'+
-    '<span class="status-pill '+esc(s.key)+'">'+esc(s.label)+'</span>'+
+    '<div class="person-main"><h3>'+esc(person.name)+'</h3><p>'+esc(subtitle)+'</p></div>'+
+    '<span class="status-pill '+esc(status.key)+'">'+esc(status.label)+'</span>'+
   '</button>';
 }
 
 function renderFocus(){
   const wrap=$('#focusList');
   const title=$('#focusTitle');
-  if(!state.people.length){
-    title.textContent='Quem olhar primeiro';
-    wrap.innerHTML='<div class="empty-state"><strong>Importe o CSV do território</strong>O Zela organiza as pessoas assim que o arquivo for carregado.</div>';
+
+  if(!state.territoryBase){
+    title.textContent='Quem visitar primeiro';
+    wrap.innerHTML='<div class="empty-state"><strong>Importe o Território</strong>Depois carregue Acompanhamentos para cruzar as pessoas e calcular o tempo sem visita.</div>';
     return;
   }
 
-  const sorted=sortPeopleForVisits(state.people);
-  const urgent=sorted.filter(p=>['agora','breve'].includes(statusOf(p).key));
-  if(urgent.length){
-    title.textContent='Quem olhar primeiro';
-    wrap.innerHTML=urgent.slice(0,6).map(personCard).join('');
+  if(!state.followupBase){
+    title.textContent='Aguardando Acompanhamentos';
+    wrap.innerHTML='<div class="empty-state"><strong>Território carregado</strong>Importe o XLS/XLSX de Acompanhamentos / Condições de saúde / Geral para calcular a última visita.</div>';
     return;
   }
 
-  const history=sorted.filter(p=>statusOf(p).key==='historico');
-  if(history.length){
-    title.textContent='Há mais tempo sem visita registrada';
-    wrap.innerHTML=history.slice(0,6).map(personCard).join('');
-    return;
-  }
-
-  title.textContent='Datas de visita não vieram no arquivo';
-  wrap.innerHTML='<div class="empty-state"><strong>O CSV foi lido corretamente</strong>Este relatório não contém “última visita” ou “próxima visita”. O Zela não inventa um prazo: importe um relatório que traga uma dessas datas para liberar a priorização de visitas.</div>';
+  const sorted=sortByLongestWithoutVisit(state.people);
+  title.textContent='Quem está há mais tempo sem visita';
+  wrap.innerHTML=sorted.length?sorted.slice(0,8).map(personCard).join(''):
+    '<div class="empty-state">Nenhuma pessoa localizada.</div>';
 }
 
 function renderStreetSummary(){
   const counts={};
-  for(const p of state.people){
-    const street=p.street&&p.street!=='-'?p.street:'Sem logradouro';
+  for(const person of state.people){
+    const street=person.street&&person.street!=='-'?person.street:'Sem logradouro';
     counts[street]=(counts[street]||0)+1;
   }
   const rows=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -140,176 +156,169 @@ function renderStreetSummary(){
 function renderVisitFilters(){
   const filters=[
     ['todos','Todos'],
-    ['agora','Agora'],
-    ['breve','Em breve'],
-    ['historico','Mais tempo'],
-    ['programada','Programadas'],
-    ['sem-data','Sem data']
+    ['sem-visita','Sem visita'],
+    ['365+','365+ dias'],
+    ['180-364','180–364'],
+    ['90-179','90–179'],
+    ['60-89','60–89'],
+    ['30-59','30–59'],
+    ['<30','< 30 dias']
   ];
   $('#visitFilters').innerHTML=filters.map(([key,label])=>
     '<button class="chip '+(state.visitFilter===key?'active':'')+'" type="button" data-visit-filter="'+key+'">'+label+'</button>'
   ).join('');
 }
 
+function matchesQuery(person,typed){
+  const raw=typed.trim();
+  if(!raw)return true;
+  const query=normalize(raw);
+  const digits=raw.replace(/\D/g,'');
+  return normalize(person.name).includes(query)||
+    normalize(person.street).includes(query)||
+    normalize(person.address).includes(query)||
+    normalize(person.microarea).includes(query)||
+    Boolean(digits&&String(person.cpf||'').replace(/\D/g,'').includes(digits))||
+    Boolean(digits&&String(person.cns||'').replace(/\D/g,'').includes(digits));
+}
+
 function renderVisitList(){
-  const query=($('#visitSearch')?.value||'').trim().toLowerCase();
-  let list=sortPeopleForVisits(state.people);
-
-  if(state.visitFilter!=='todos'){
-    list=list.filter(p=>statusOf(p).key===state.visitFilter);
-  }
-
-  if(query){
-    list=list.filter(p=>
-      p.name.toLowerCase().includes(query)||
-      String(p.street||'').toLowerCase().includes(query)||
-      String(p.address||'').toLowerCase().includes(query)
-    );
-  }
+  const typed=$('#visitSearch')?.value||'';
+  let list=sortByLongestWithoutVisit(state.people).filter(person=>matchesQuery(person,typed));
+  if(state.visitFilter!=='todos')list=list.filter(person=>statusOf(person).key===state.visitFilter);
 
   $('#visitList').innerHTML=list.length?list.slice(0,300).map(personCard).join(''):
-    '<div class="empty-state"><strong>Nada encontrado</strong>Tente outro filtro ou outra busca.</div>';
+    '<div class="empty-state"><strong>Nada encontrado</strong>Ajuste a busca ou o filtro.</div>';
 }
 
 function renderPeople(){
-  const typed=($('#peopleSearch')?.value||'').trim();
-  const text=typed.toLowerCase();
-  const digits=typed.replace(/\D/g,'');
-  let list=[...state.people].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
-
-  if(text){
-    list=list.filter(p=>
-      p.name.toLowerCase().includes(text)||
-      String(p.street||'').toLowerCase().includes(text)||
-      (digits&&String(p.cpf||'').replace(/\D/g,'').includes(digits))||
-      (digits&&String(p.cns||'').replace(/\D/g,'').includes(digits))
-    );
-  }
+  const typed=$('#peopleSearch')?.value||'';
+  const list=[...state.people]
+    .filter(person=>matchesQuery(person,typed))
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'pt-BR'));
 
   $('#peopleList').innerHTML=list.length?list.slice(0,300).map(personCard).join(''):
-    '<div class="empty-state"><strong>Nenhuma pessoa encontrada</strong>Importe um CSV ou ajuste a busca.</div>';
+    '<div class="empty-state"><strong>Nenhuma pessoa encontrada</strong>Importe o Território ou ajuste a busca.</div>';
 }
 
-function delimiterName(value){
-  if(value===';')return'Ponto e vírgula (;)';
-  if(value===',')return'Vírgula (,)';
-  if(value==='\t')return'Tabulação';
-  return value||'—';
+function sourceCard(title,kind,base,buttonLabel){
+  const ready=Boolean(base);
+  const details=ready
+    ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong><br>'+formatNumber(base.data.length)+' registros · cabeçalho na linha '+(base.headerIndex+1)
+    : 'Nenhum arquivo carregado.';
+  return '<div class="source-card '+(ready?'ready':'')+'">'+
+    '<span class="eyebrow">'+esc(title)+'</span>'+
+    '<div class="source-status">'+details+'</div>'+
+    '<button class="primary source-action" type="button" data-import-kind="'+kind+'">'+esc(buttonLabel)+'</button>'+
+  '</div>';
 }
 
-function formatItem(label,value){
-  return '<div class="format-item"><b>'+label+'</b><span>'+esc(value||'—')+'</span></div>';
+function renderImportCards(){
+  $('#sourceCards').innerHTML=
+    sourceCard('BASE 1 · TERRITÓRIO / MICROÁREA','territory',state.territoryBase,state.territoryBase?'Atualizar Território':'Selecionar CSV')+
+    sourceCard('BASE 2 · ACOMPANHAMENTOS / CONDIÇÕES DE SAÚDE','followup',state.followupBase,state.followupBase?'Atualizar Acompanhamentos':'Selecionar XLS/XLSX');
 }
 
-function renderFormatInfo(){
-  const last=state.imports[0]||{};
-  $('#formatInfo').innerHTML=
-    formatItem('Codificação',last.encoding||'—')+
-    formatItem('Separador',delimiterName(last.delimiter))+
-    formatItem('Datas',state.meta.dateFormat||'—')+
-    formatItem('Datas de visita',state.meta.hasVisitDate?'Encontradas':'Não encontradas');
-}
-
-function renderImportHistory(){
-  const last=state.imports[0];
-  if(!last){
-    $('#importHistory').textContent='Nenhuma importação nesta sessão.';
+function renderQuality(){
+  const panel=$('#qualitySummary');
+  if(!state.territoryBase){
+    panel.innerHTML='<div class="empty-state">Importe as bases para ver a qualidade da conciliação.</div>';
+    return;
+  }
+  if(!state.followupBase){
+    panel.innerHTML='<div class="empty-state"><strong>'+formatNumber(state.territoryBase.data.length)+' pessoas no Território</strong>Aguardando a segunda base.</div>';
     return;
   }
 
-  $('#importHistory').innerHTML=
-    '<strong>'+esc(last.file)+'</strong><br>'+
-    formatNumber(last.count)+' registros · cabeçalho na linha '+last.headerLine+
-    ' · '+esc(last.encoding)+' · '+esc(state.meta.dateFormat||'data não identificada');
+  const stats=state.stats;
+  panel.innerHTML=
+    '<div class="quality-grid">'+
+      '<div><b>'+formatNumber(stats.territoryCount)+'</b><span>Território</span></div>'+
+      '<div><b>'+formatNumber(stats.matchedCount)+'</b><span>Conciliadas</span></div>'+
+      '<div><b>'+formatNumber(stats.territoryOnly)+'</b><span>Sem acompanhamento</span></div>'+
+      '<div><b>'+formatNumber(stats.followupOnlyRecords)+'</b><span>Registros fora do Território</span></div>'+
+    '</div>'+
+    '<div class="quality-methods">Vínculos: <strong>'+formatNumber(stats.matchMethods.cpf)+' CPF</strong> · '+
+      '<strong>'+formatNumber(stats.matchMethods.cns)+' CNS</strong> · '+
+      '<strong>'+formatNumber(stats.matchMethods['nome+nascimento'])+' nome + nascimento</strong></div>'+
+    (state.followupBase.meta.hasConditions
+      ? ''
+      : '<p class="data-note">Esta exportação não possui coluna de condições clínicas; o Zela não cria listas temáticas inexistentes.</p>');
+}
+
+function formatItem(label,value){
+  return '<div class="format-item"><b>'+esc(label)+'</b><span>'+esc(value||'—')+'</span></div>';
+}
+
+function renderFormatInfo(){
+  const territory=state.territoryBase;
+  const followup=state.followupBase;
+  $('#formatInfo').innerHTML=
+    formatItem('Território',territory?territory.encoding+' · '+territory.data.length+' registros':'—')+
+    formatItem('Acompanhamentos',followup?followup.encoding+' · '+followup.data.length+' registros':'—')+
+    formatItem('Data da base',followup?.meta?.generatedAt||territory?.meta?.generatedAt||'—')+
+    formatItem('Visita domiciliar',followup?.meta?.hasVisitElapsed?'Dias/meses encontrados':'Aguardando base');
 }
 
 function detailPerson(key){
-  const p=state.people.find(x=>x.key===key);
-  if(!p)return;
-  const s=statusOf(p);
+  const person=state.people.find(item=>item.key===key);
+  if(!person)return;
+  const status=statusOf(person);
+  const conditions=person.conditions?.length?person.conditions.join(', '):'Não informadas nesta exportação';
+  const visitDate=person.lastVisitDate?formatDateSafe(person.lastVisitDate):'Sem visita localizada';
+  const visitNote=person.lastVisitEstimated?'Estimativa calculada a partir de “dias/meses desde a última visita” e da data de geração do relatório.':'';
 
   $('#detailContent').innerHTML=
     '<span class="eyebrow">PESSOA</span>'+
-    '<h2>'+esc(p.name)+'</h2>'+
-    '<div class="detail-row"><b>Situação de visita</b>'+esc(s.label)+'</div>'+
-    '<div class="detail-row"><b>Última visita encontrada</b>'+formatDate(p.lastVisit)+'</div>'+
-    '<div class="detail-row"><b>Próxima visita encontrada</b>'+formatDate(p.nextVisit)+'</div>'+
-    '<div class="detail-row"><b>Endereço</b>'+esc(p.address||'—')+'</div>'+
-    '<div class="detail-row"><b>Nascimento</b>'+formatDate(p.birth)+'</div>'+
-    '<div class="detail-row"><b>Identificadores</b>CPF '+maskId(p.cpf)+' · CNS '+maskId(p.cns)+'</div>'+
-    '<div class="detail-row"><b>Importante</b>O Zela apenas organiza as datas presentes no arquivo. Ele não cria periodicidade clínica nem substitui o registro oficial no e-SUS.</div>';
+    '<h2>'+esc(person.name)+'</h2>'+
+    '<div class="detail-row"><b>Tempo sem visita</b>'+esc(status.label)+'</div>'+
+    '<div class="detail-row"><b>Última visita</b>'+esc(visitDate)+(visitNote?'<small>'+esc(visitNote)+'</small>':'')+'</div>'+
+    '<div class="detail-row"><b>Microárea</b>'+esc(person.microarea||'—')+'</div>'+
+    '<div class="detail-row"><b>Endereço</b>'+esc(person.address||'—')+'</div>'+
+    '<div class="detail-row"><b>Nascimento</b>'+esc(formatDateSafe(person.birth))+'</div>'+
+    '<div class="detail-row"><b>Identificadores</b>CPF '+maskId(person.cpf)+' · CNS '+maskId(person.cns)+'</div>'+
+    '<div class="detail-row"><b>Condições</b>'+esc(conditions)+'</div>'+
+    '<div class="detail-row"><b>Conciliação</b>'+esc(person.matchMethod||'Sem correspondência no Acompanhamento')+'</div>';
 
   $('#detailDialog').showModal();
 }
 
-async function importFile(file){
+async function importKind(kind,file){
+  const expected=kind==='territory'?'territory':'followup';
   try{
-    const out=await parseFile(file);
-    state.rows=out.data;
-    state.meta=out.meta;
-    state.imports.unshift({
-      file:file.name,
-      count:out.data.length,
-      encoding:out.encoding,
-      delimiter:out.delimiter,
-      headerLine:out.headerIndex+1,
-      at:new Date().toISOString()
-    });
+    const parsed=await parseFile(file,expected);
+    if(kind==='territory')state.territoryBase=parsed;
+    else state.followupBase=parsed;
     recalc();
-    toast('Arquivo lido: '+out.data.length+' pessoas · datas '+(out.meta.dateFormat||'não identificadas')+'.');
+    showView('dados');
+    toast((kind==='territory'?'Território':'Acompanhamentos')+' carregado: '+formatNumber(parsed.data.length)+' registros.');
   }catch(error){
-    toast(error?.message||'Não foi possível ler este CSV.',true);
+    toast(error?.message||'Não foi possível ler este arquivo.',true);
   }
 }
 
 function toast(message,error=false){
-  const el=$('#dataStatus');
-  el.textContent=message;
-  el.style.borderColor=error?'#e7b3b0':'#9bc7bc';
+  const element=$('#dataStatus');
+  element.textContent=message;
+  element.classList.toggle('error',error);
   setTimeout(()=>{
-    el.style.borderColor='';
+    element.classList.remove('error');
     renderHeader();
-  },4200);
-}
-
-function toBrDate(date){
-  const d=String(date.getDate()).padStart(2,'0');
-  const m=String(date.getMonth()+1).padStart(2,'0');
-  return d+'/'+m+'/'+date.getFullYear();
-}
-
-function demoWithVisits(){
-  const now=new Date();
-  const shift=days=>{
-    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+days);
-    return toBrDate(d);
-  };
-  return demoRows.map((row,index)=>({
-    ...row,
-    lastVisit:index<3?shift(-(20+index*35)):'',
-    nextVisit:index===0?shift(-2):index===1?shift(4):''
-  }));
+  },5000);
 }
 
 function loadDemo(){
-  state.rows=demoWithVisits();
-  state.meta={
-    microarea:'DEMO',
-    generatedAt:toBrDate(new Date()),
-    dateFormat:'DD/MM/AAAA',
-    hasVisitDate:true
+  state.territoryBase={
+    data:demoRows.map((row,index)=>({...row,id:'demo-'+index,source:'territory'})),
+    meta:{microarea:'DEMO',generatedAt:new Intl.DateTimeFormat('pt-BR').format(new Date()),dateFormat:'DD/MM/AAAA'},
+    fileName:'demonstração fictícia.csv',
+    headerIndex:0,
+    encoding:'UTF-8'
   };
-  state.imports=[{
-    file:'demonstração fictícia',
-    count:state.rows.length,
-    encoding:'UTF-8',
-    delimiter:';',
-    headerLine:1,
-    at:new Date().toISOString()
-  }];
+  state.followupBase=null;
   recalc();
   showView('painel');
-  toast('Demonstração carregada com dados fictícios.');
+  toast('Demonstração do Território carregada. Para calcular visitas, importe a base real de Acompanhamentos.');
 }
 
 function setVisitFilter(filter,openList=true){
@@ -321,23 +330,34 @@ function setVisitFilter(filter,openList=true){
 
 function bind(){
   document.addEventListener('click',event=>{
-    const target=event.target.closest('[data-view-target],[data-go],[data-person],[data-visit-filter]');
+    const target=event.target.closest('[data-view-target],[data-go],[data-person],[data-visit-filter],[data-import-kind]');
     if(!target)return;
 
     if(target.dataset.viewTarget)showView(target.dataset.viewTarget);
     if(target.dataset.go)showView(target.dataset.go);
     if(target.dataset.person)detailPerson(target.dataset.person);
     if(target.dataset.visitFilter)setVisitFilter(target.dataset.visitFilter,true);
+    if(target.dataset.importKind){
+      const input=target.dataset.importKind==='territory'?$('#territoryInput'):$('#followupInput');
+      input?.click();
+    }
   });
 
-  $('#importTopBtn').onclick=()=>$('#csvInput').click();
-  $('#importNow').onclick=()=>$('#csvInput').click();
+  $('#importTopBtn').onclick=()=>showView('dados');
   $('#loadDemo').onclick=loadDemo;
-  $('#csvInput').onchange=event=>{
+
+  $('#territoryInput').onchange=event=>{
     const file=event.target.files?.[0];
-    if(file)importFile(file);
+    if(file)importKind('territory',file);
     event.target.value='';
   };
+
+  $('#followupInput').onchange=event=>{
+    const file=event.target.files?.[0];
+    if(file)importKind('followup',file);
+    event.target.value='';
+  };
+
   $('#visitSearch').oninput=renderVisitList;
   $('#peopleSearch').oninput=renderPeople;
 
@@ -350,6 +370,7 @@ function init(){
   $('#todayDate').textContent=formatted.charAt(0).toUpperCase()+formatted.slice(1);
   bind();
   renderAll();
+
   if('serviceWorker'in navigator){
     let reloading=false;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{
@@ -357,7 +378,7 @@ function init(){
       reloading=true;
       window.location.reload();
     });
-    navigator.serviceWorker.register('./sw.js?v=7',{updateViaCache:'none'})
+    navigator.serviceWorker.register('./sw.js?v=8',{updateViaCache:'none'})
       .then(registration=>registration.update())
       .catch(()=>{});
   }
