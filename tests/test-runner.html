@@ -2,31 +2,47 @@
 <meta charset="utf-8">
 <title>Testes Zela</title>
 <pre id="out"></pre>
+<script>
+  window.__zelaFatalCount=0;
+  const fatalOut=()=>document.querySelector('#out');
+  const reportFatal=message=>{
+    window.__zelaFatalCount++;
+    const out=fatalOut();
+    if(out)out.textContent+='❌ ERRO FATAL: '+message+'\n';
+    document.body.dataset.result='fail';
+  };
+  window.addEventListener('error',event=>reportFatal(event.message||'erro JavaScript não tratado'));
+  window.addEventListener('unhandledrejection',event=>reportFatal(event.reason?.message||String(event.reason||'promise rejeitada')));
+</script>
 <script type="module">
-import{parseText,parseDate,detectDateFormat,normalize}from'../src/modules/csv.js';
-import{mergeBases,validCpf,validCns,getVisitState,inferLastVisitDate}from'../src/modules/model.js';
+import{
+  parseFile,parseText,parseRows,parseDate,detectDateFormat,normalize,
+  decodeBuffer,workbookMatrixToRows
+}from'../src/modules/csv.js';
+import{
+  mergeBases,validCpf,validCns,getVisitState,inferLastVisitDate
+}from'../src/modules/model.js';
 
 const out=document.querySelector('#out');
 let pass=0,fail=0;
-const t=(name,fn)=>{
-  try{fn();out.textContent+='✅ '+name+'\n';pass++}
-  catch(error){out.textContent+='❌ '+name+': '+error.message+'\n';fail++}
+const cases=[];
+const test=(name,fn)=>cases.push([name,fn]);
+const ok=(value,message='falhou')=>{if(!value)throw Error(message);};
+const equal=(actual,expected,message='valor inesperado')=>{
+  if(actual!==expected)throw Error(message+' · esperado '+expected+', recebido '+actual);
 };
-const ok=(value,message='falhou')=>{if(!value)throw Error(message)};
-
-t('data brasileira DD/MM/AAAA',()=>ok(parseDate('16/09/2026') instanceof Date));
-t('data ISO AAAA-MM-DD',()=>ok(parseDate('2026-09-16') instanceof Date));
-t('data DD-MM-AAAA',()=>ok(parseDate('16-09-2026') instanceof Date));
-t('data inválida não é aceita',()=>ok(parseDate('31/02/2026')===null));
-t('serial Excel vira data correta',()=>{
-  const date=parseDate(45916);
-  ok(date instanceof Date);
-  ok(date.getFullYear()===2025||date.getFullYear()===2026);
-});
-t('identifica formato brasileiro',()=>ok(detectDateFormat(['16/09/2026','01/01/2000'])==='DD/MM/AAAA'));
-t('normalização ignora acentos e caixa',()=>ok(normalize(' JOÃO  DA SILVA ')==='joao da silva'));
-t('CPF formatado é preservado como 11 dígitos',()=>ok(validCpf('123.456.789-00')==='12345678900'));
-t('CNS é preservado como 15 dígitos',()=>ok(validCns('123 4567 8901 2345')==='123456789012345'));
+const throws=(fn,pattern)=>{
+  let error=null;
+  try{fn();}catch(caught){error=caught;}
+  ok(error,'era esperado um erro');
+  if(pattern)ok(pattern.test(String(error.message||error)),'mensagem de erro inesperada');
+};
+const throwsAsync=async(fn,pattern)=>{
+  let error=null;
+  try{await fn();}catch(caught){error=caught;}
+  ok(error,'era esperado um erro');
+  if(pattern)ok(pattern.test(String(error.message||error)),'mensagem de erro inesperada');
+};
 
 const territoryText=[
   'ACOMPANHAMENTO DO TERRITÓRIO;;;;;;;;;;;;;;',
@@ -49,42 +65,182 @@ const followupText=[
   'FORA DO TERRITORIO;05/05/1950;98765432100;;05;1;0'
 ].join('\n');
 
-const territory=parseText(territoryText);
-const followup=parseText(followupText);
+const parsedPair=()=>{
+  const territory=parseText(territoryText);
+  const followup=parseText(followupText);
+  return{territory,followup};
+};
 
-t('Território é reconhecido após preâmbulo',()=>{
-  ok(territory.reportType==='territory');
-  ok(territory.data.length===4);
-  ok(territory.meta.microarea==='04');
+test('data brasileira DD/MM/AAAA',()=>ok(parseDate('16/09/2026') instanceof Date));
+test('data ISO AAAA-MM-DD',()=>ok(parseDate('2026-09-16') instanceof Date));
+test('data DD-MM-AAAA',()=>ok(parseDate('16-09-2026') instanceof Date));
+test('data inválida não é aceita',()=>equal(parseDate('31/02/2026'),null));
+test('serial Excel vira data',()=>ok(parseDate(45916) instanceof Date));
+test('identifica formato brasileiro',()=>equal(detectDateFormat(['16/09/2026','01/01/2000']),'DD/MM/AAAA'));
+test('normalização ignora acentos e caixa',()=>equal(normalize(' JOÃO  DA SILVA '),'joao da silva'));
+test('CPF formatado vira 11 dígitos',()=>equal(validCpf('123.456.789-00'),'12345678900'));
+test('CNS formatado vira 15 dígitos',()=>equal(validCns('123 4567 8901 2345'),'123456789012345'));
+
+test('CSV Windows-1252 é detectado e decodificado',()=>{
+  const bytes=new Uint8Array([0x41,0xe7,0xe3,0x6f]).buffer;
+  const decoded=decodeBuffer(bytes);
+  equal(decoded.encoding,'windows-1252');
+  equal(decoded.text,'Ação');
 });
 
-t('Acompanhamento é reconhecido e encontra visita',()=>{
-  ok(followup.reportType==='followup');
-  ok(followup.data.length===4);
-  ok(followup.meta.hasVisitElapsed===true);
+test('Território é reconhecido após preâmbulo',()=>{
+  const territory=parseText(territoryText);
+  equal(territory.reportType,'territory');
+  equal(territory.data.length,4);
+  equal(territory.meta.microarea,'04');
+  ok(territory.headerIndex>0);
 });
 
-const merged=mergeBases(territory,followup,new Date(2026,8,21));
+test('Acompanhamentos é reconhecido e encontra visita',()=>{
+  const followup=parseText(followupText);
+  equal(followup.reportType,'followup');
+  equal(followup.data.length,4);
+  equal(followup.meta.hasVisitElapsed,true);
+});
 
-t('vincula primeiro por CPF',()=>ok(merged.stats.matchMethods.cpf===1));
-t('vincula depois por CNS',()=>ok(merged.stats.matchMethods.cns===1));
-t('fallback conservador usa nome + nascimento',()=>ok(merged.stats.matchMethods['nome+nascimento']===1));
-t('pessoa sem acompanhamento permanece no painel',()=>ok(merged.stats.territoryOnly===1));
-t('acompanhamento sem território fica separado',()=>ok(merged.stats.followupOnlyRecords===1));
-t('não duplica cidadão no painel',()=>ok(merged.people.length===4));
-t('calcula visita a partir de dias/meses do relatório',()=>{
+test('índice por CPF concilia corretamente',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.stats.matchMethods.cpf,1);
+});
+
+test('índice por CNS concilia sem ReferenceError',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.stats.matchMethods.cns,1);
+});
+
+test('fallback conservador usa nome + nascimento',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.stats.matchMethods['nome+nascimento'],1);
+});
+
+test('Território sem acompanhamento continua no painel',()=>{
+  const{territory}=parsedPair();
+  const merged=mergeBases(territory,null,new Date(2026,8,21));
+  equal(merged.people.length,4);
+  equal(merged.stats.territoryOnly,4);
+});
+
+test('Acompanhamento sem Território fica separado',()=>{
+  const{followup}=parsedPair();
+  const merged=mergeBases(null,followup,new Date(2026,8,21));
+  equal(merged.people.length,0);
+  equal(merged.stats.followupOnlyRecords,4);
+});
+
+test('merge sem condições não quebra',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.people.length,4);
+});
+
+test('merge com condições filtra valores vazios sem ReferenceError',()=>{
+  const territory={data:[{name:'PESSOA TESTE',birth:'01/01/1990',cpf:'12345678900',cns:''}],meta:{}};
+  const followup={
+    data:[{name:'PESSOA TESTE',birth:'01/01/1990',cpf:'12345678900',cns:'',visitDays:'10',visitMonths:'0',conditions:'Condição A; ;Condição B'}],
+    meta:{generatedDate:'21/09/2026'}
+  };
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.people[0].conditions.length,2);
+});
+
+test('mais de um acompanhamento da mesma pessoa é preservado',()=>{
+  const territory={data:[{name:'PESSOA TESTE',birth:'01/01/1990',cpf:'12345678900',cns:''}],meta:{}};
+  const followup={
+    data:[
+      {name:'PESSOA TESTE',birth:'01/01/1990',cpf:'12345678900',cns:'',visitDays:'30',visitMonths:'0',conditions:''},
+      {name:'PESSOA TESTE',birth:'01/01/1990',cpf:'12345678900',cns:'',visitDays:'5',visitMonths:'0',conditions:''}
+    ],
+    meta:{generatedDate:'21/09/2026'}
+  };
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  equal(merged.stats.matchedCount,1);
+  equal(merged.stats.matchedFollowupRecords,2);
+  equal(merged.people[0].followupEvents.length,2);
+  equal(merged.people[0].daysSinceVisit,5);
+});
+
+test('dias desde última visita são calculados',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
   const person=merged.people.find(item=>item.name==='PESSOA CPF');
-  ok(person.daysSinceVisit===20);
-});
-t('sem acompanhamento vira Sem visita localizada',()=>{
-  const person=merged.people.find(item=>item.name==='SEM ACOMPANHAMENTO');
-  ok(getVisitState(person).key==='sem-visita');
-});
-t('inferência de visita usa data de geração',()=>{
-  const date=inferLastVisitDate({generatedDate:'21/09/2026'},{visitDays:'20',visitMonths:'0'});
-  ok(date.getDate()===1&&date.getMonth()===8&&date.getFullYear()===2026);
+  equal(person.daysSinceVisit,20);
 });
 
+test('meses + dias desde última visita são combinados',()=>{
+  const date=inferLastVisitDate({generatedDate:'21/09/2026'},{visitDays:'5',visitMonths:'2'});
+  equal(date.getFullYear(),2026);
+  equal(date.getMonth(),6);
+  equal(date.getDate(),16);
+});
+
+test('sem acompanhamento vira Sem visita localizada',()=>{
+  const{territory,followup}=parsedPair();
+  const merged=mergeBases(territory,followup,new Date(2026,8,21));
+  const person=merged.people.find(item=>item.name==='SEM ACOMPANHAMENTO');
+  equal(getVisitState(person).key,'sem-visita');
+});
+
+test('XLSX e-SUS com linha interna separada por ; é reconstruído por linha',()=>{
+  const matrix=[
+    ['Nome;Data de nascimento;CPF;CNS;Última medição de peso;Última medição de altura;Dias desde a última visita domiciliar;Meses desde a última visita domiciliar'],
+    ['PESSOA TESTE;01/01/1990;12345678900;;82','00;158','00;20;0']
+  ];
+  const rows=workbookMatrixToRows(matrix);
+  equal(rows[1][4],'82,00');
+  equal(rows[1][5],'158,00');
+  equal(rows[1][6],'20');
+  equal(rows[1][7],'0');
+});
+
+test('XLSX normal em colunas não é destruído',()=>{
+  const matrix=[
+    ['Nome','Data de nascimento','CPF','CNS','Dias desde a última visita domiciliar'],
+    ['PESSOA TESTE','01/01/1990','12345678900','','20'],
+    ['Observação; manter','valor','','','']
+  ];
+  const rows=workbookMatrixToRows(matrix);
+  equal(rows[0].length,5);
+  equal(rows[1][0],'PESSOA TESTE');
+  equal(rows[2][0],'Observação; manter');
+  equal(rows[2][1],'valor');
+});
+
+test('arquivo incompatível gera erro controlado',()=>{
+  throws(()=>parseRows([['COLUNA A','COLUNA B'],['A','B']]),/cabeçalho|relatório/i);
+});
+
+test('arquivo correto no seletor errado orienta a Base 2',async()=>{
+  const file=new File([followupText],'acompanhamentos.csv',{type:'text/csv'});
+  await throwsAsync(()=>parseFile(file,'territory'),/Base 2/);
+});
+
+test('CSV sintético passa pelo fluxo parseFile',async()=>{
+  const file=new File([territoryText],'territorio.csv',{type:'text/csv'});
+  const parsed=await parseFile(file,'territory');
+  equal(parsed.reportType,'territory');
+  equal(parsed.data.length,4);
+});
+
+for(const[name,fn]of cases){
+  try{
+    await fn();
+    out.textContent+='✅ '+name+'\n';
+    pass++;
+  }catch(error){
+    out.textContent+='❌ '+name+': '+String(error?.message||error)+'\n';
+    fail++;
+  }
+}
+
+fail+=window.__zelaFatalCount;
 out.textContent+='\n'+pass+' passaram · '+fail+' falharam';
 document.body.dataset.result=fail?'fail':'pass';
 </script>
