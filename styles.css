@@ -591,3 +591,106 @@ dialog form{padding:20px}
   .brand-logo{width:52px;height:52px;flex-basis:52px}
   .import-logo{width:92px;height:92px}
 }
+
+/* Zela v8 — duas bases e conciliação */
+.source-cards{
+  display:grid;
+  gap:10px;
+  margin:14px 0 8px;
+  text-align:left;
+}
+.source-card{
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:17px;
+  padding:13px;
+  background:rgba(255,255,255,.08);
+}
+.source-card.ready{background:rgba(255,255,255,.14)}
+.source-card .eyebrow{color:#e7f5f1}
+.source-status{
+  min-height:42px;
+  margin:7px 0 9px;
+  color:#eef8f5;
+  font-size:.8rem;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+.source-status strong{color:#fff}
+.source-action{
+  width:100%;
+  margin:0;
+}
+.quality-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.quality-grid>div{
+  min-width:0;
+  border-radius:14px;
+  padding:11px;
+  background:var(--soft);
+}
+.quality-grid b{
+  display:block;
+  font-size:1.3rem;
+  color:var(--ink);
+}
+.quality-grid span{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:.72rem;
+  line-height:1.25;
+}
+.quality-methods{
+  margin-top:10px;
+  color:var(--muted);
+  font-size:.8rem;
+  line-height:1.5;
+}
+.data-note{
+  margin:10px 0 0;
+  padding:10px 12px;
+  border-radius:12px;
+  background:var(--warn-soft);
+  color:#6d5715;
+  font-size:.78rem;
+  line-height:1.4;
+}
+.data-status.error{
+  border-color:#e6aaa6;
+  background:var(--danger-soft);
+  color:var(--danger);
+}
+.status-pill.sem-visita,
+.status-pill.365+{
+  background:var(--danger-soft);
+  color:var(--danger);
+}
+.status-pill.180-364,
+.status-pill.90-179{
+  background:var(--warn-soft);
+  color:var(--warn);
+}
+.status-pill.60-89,
+.status-pill.30-59,
+.status-pill.<30{
+  background:var(--brand-soft);
+  color:var(--brand);
+}
+.detail-row small{
+  display:block;
+  margin-top:5px;
+  color:var(--muted);
+  font-size:.75rem;
+  line-height:1.35;
+}
+@media(max-width:414px){
+  .source-card{padding:12px}
+  .quality-grid{grid-template-columns:1fr 1fr}
+  .status-pill{
+    max-width:46%;
+    white-space:normal;
+  }
+}
