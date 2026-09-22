@@ -332,6 +332,11 @@ function rowValue(row,map,key){
   return cleanCell(row[map[key]]);
 }
 
+function isUsableName(value){
+  const normalized=normalize(value);
+  return Boolean(normalized&&normalized!=='-'&&normalized!=='nao informado'&&normalized!=='sem informacao');
+}
+
 function standardizeRow(row,map,reportType,index,meta){
   const base={
     id:reportType+'-'+index,
@@ -418,10 +423,15 @@ export function parseRows(rows){
 
   const meta=extractMeta(normalizedRows,headerIndex,reportType);
   const data=[];
+  let recordsRead=0;
   for(let index=headerIndex+1;index<normalizedRows.length;index++){
     let row=normalizedRows[index];
     if(row.length===1&&String(row[0]??'').includes(';'))row=parseLine(String(row[0]),';');
-    if(!row.some(Boolean)||!rowValue(row,map,'name'))continue;
+    if(!row.some(Boolean))continue;
+    const name=rowValue(row,map,'name');
+    if(!name)continue;
+    recordsRead++;
+    if(!isUsableName(name))continue;
     data.push(standardizeRow(row,map,reportType,data.length,meta));
   }
 
@@ -433,6 +443,9 @@ export function parseRows(rows){
   }
   if(meta.generatedAt)dateValues.push(meta.generatedAt);
   meta.dateFormat=detectDateFormat(dateValues);
+  meta.recordsRead=recordsRead;
+  meta.validRecords=data.length;
+  meta.invalidRecords=Math.max(0,recordsRead-data.length);
   meta.hasVisitElapsed=reportType==='followup'&&(map.visitDays!=null||map.visitMonths!=null);
   meta.hasConditions=map.conditions!=null;
   meta.recognizedColumns=Object.entries(map).map(([field,index])=>({field,column:String(header[index]??'')}));

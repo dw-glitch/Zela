@@ -92,8 +92,19 @@ test('Território é reconhecido após preâmbulo',()=>{
   const territory=parseText(territoryText);
   equal(territory.reportType,'territory');
   equal(territory.data.length,4);
+  equal(territory.meta.recordsRead,4);
+  equal(territory.meta.validRecords,4);
   equal(territory.meta.microarea,'04');
   ok(territory.headerIndex>0);
+});
+
+test('linha territorial sem pessoa conta como lida mas não entra no painel',()=>{
+  const withPlaceholder=territoryText+'\nRUA;OMEGA;50;CENTRO;-;-;;;SIM;;';
+  const territory=parseText(withPlaceholder);
+  equal(territory.meta.recordsRead,5);
+  equal(territory.meta.validRecords,4);
+  equal(territory.meta.invalidRecords,1);
+  equal(territory.data.length,4);
 });
 
 test('Acompanhamentos é reconhecido e encontra visita',()=>{

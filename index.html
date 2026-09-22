@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#176b5b">
   <meta name="description" content="Zela: painel mobile para organizar o território e localizar quem está há mais tempo sem visita domiciliar.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cdn.sheetjs.com; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <link rel="manifest" href="manifest.webmanifest?v=9">
+  <link rel="manifest" href="manifest.webmanifest?v=10">
   <link rel="icon" href="assets/zela-icon-192-v2.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/zela-touch-180-v2.png">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
   <title>Zela</title>
 </head>
 <body>
@@ -116,6 +116,17 @@
         <div id="qualitySummary"></div>
       </section>
 
+      <section id="unmatchedPanel" class="panel" hidden>
+        <div class="panel-head">
+          <div>
+            <span class="eyebrow">CONFERÊNCIA</span>
+            <h3>Não localizado no Território</h3>
+          </div>
+        </div>
+        <p class="muted unmatched-help">Registros da base de Acompanhamentos que não encontraram correspondência segura no Território.</p>
+        <div id="unmatchedList" class="unmatched-list"></div>
+      </section>
+
       <section class="panel">
         <div class="panel-head">
           <div>
@@ -145,6 +156,6 @@
   <input id="territoryInput" type="file" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
   <input id="followupInput" type="file" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 
-  <script type="module" src="src/app.js?v=9"></script>
+  <script type="module" src="src/app.js?v=10"></script>
 </body>
 </html>

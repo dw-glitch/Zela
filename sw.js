@@ -1,13 +1,13 @@
-const CACHE='zela-shell-v9';
+const CACHE='zela-shell-v10';
 const XLSX_URL='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
 const SHELL=[
   './',
   './index.html',
-  './styles.css?v=9',
-  './manifest.webmanifest?v=9',
+  './styles.css?v=10',
+  './manifest.webmanifest?v=10',
   './assets/zela-icon-192-v2.png',
   './assets/zela-touch-180-v2.png',
-  './src/app.js?v=9',
+  './src/app.js?v=10',
   './src/modules/csv.js',
   './src/modules/model.js',
   './src/modules/demo.js'

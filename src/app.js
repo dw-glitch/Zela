@@ -25,6 +25,22 @@ const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({
 const formatNumber=value=>new Intl.NumberFormat('pt-BR').format(value||0);
 const formatDateSafe=value=>value?formatDate(value):'—';
 
+function basePersonKey(row,index){
+  const cpf=String(row?.cpf||'').replace(/\D/g,'');
+  if(cpf.length===11)return'cpf:'+cpf;
+  const cns=String(row?.cns||'').replace(/\D/g,'');
+  if(cns.length===15)return'cns:'+cns;
+  const name=normalize(row?.name);
+  const birth=String(row?.birth||'').trim();
+  if(name&&birth)return'namebirth:'+name+'|'+birth;
+  return'row:'+index;
+}
+
+function distinctPeopleCount(base){
+  if(!base?.data?.length)return 0;
+  return new Set(base.data.map(basePersonKey)).size;
+}
+
 function todayStart(){
   const now=new Date();
   return new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -68,6 +84,7 @@ function renderAll(){
   renderPeople();
   renderImportCards();
   renderQuality();
+  renderUnmatched();
   renderFormatInfo();
 }
 
@@ -208,8 +225,16 @@ function renderPeople(){
 function sourceCard(title,kind,base,buttonLabel){
   const ready=Boolean(base);
   const busy=Boolean(importBusy[kind]);
+  const peopleCount=ready?distinctPeopleCount(base):0;
+  const generated=base?.meta?.generatedAt||base?.meta?.generatedDate||'';
+  const recordsRead=ready?(base.meta?.recordsRead??base.data.length):0;
+  const validRecords=ready?(base.meta?.validRecords??base.data.length):0;
   const details=ready
-    ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong><br>'+formatNumber(base.data.length)+' registros · cabeçalho na linha '+(base.headerIndex+1)+'<br><span class="source-ready">✓ Base pronta</span>'
+    ? '<strong>'+esc(base.fileName||'Arquivo carregado')+'</strong>'+
+      '<span class="source-detail">'+formatNumber(recordsRead)+' registros lidos · '+formatNumber(validRecords)+' válidos</span>'+
+      '<span class="source-detail">'+formatNumber(peopleCount)+' pessoas identificadas · cabeçalho na linha '+(base.headerIndex+1)+'</span>'+
+      (generated?'<span class="source-detail">Base gerada em '+esc(generated)+'</span>':'')+
+      '<span class="source-ready">✓ Base pronta</span>'
     : 'Nenhum arquivo carregado.';
   return '<div class="source-card '+(ready?'ready ':'')+(busy?'busy':'')+'">'+
     '<span class="eyebrow">'+esc(title)+'</span>'+
@@ -249,7 +274,10 @@ function friendlyImportError(error,kind){
 
 function successMessage(kind,parsed,nextTerritory,nextFollowup,derived){
   const label=importLabel(kind);
-  const loaded=label+' carregado com '+formatNumber(parsed.data.length)+' registros.';
+  const recordsRead=parsed.meta?.recordsRead??parsed.data.length;
+  const invalid=parsed.meta?.invalidRecords||0;
+  const loaded=label+' carregado com '+formatNumber(recordsRead)+' registros lidos'+
+    (invalid?' e '+formatNumber(parsed.data.length)+' válidos.':'.');
   if(nextTerritory&&nextFollowup&&derived.stats){
     return loaded+' Bases conciliadas com sucesso: '+formatNumber(derived.stats.matchedCount)+' pessoas conciliadas, '+
       formatNumber(derived.stats.territoryOnly)+' sem acompanhamento e '+
@@ -285,6 +313,42 @@ function renderQuality(){
       : '<p class="data-note">Esta exportação não possui coluna de condições clínicas; o Zela não cria listas temáticas inexistentes.</p>');
 }
 
+function unmatchedRow(person){
+  const birth=person.birth?formatDateSafe(person.birth):'—';
+  const ids='CPF '+maskId(person.cpf)+' · CNS '+maskId(person.cns);
+  return '<div class="unmatched-row">'+
+    '<div><strong>'+esc(person.name||'Sem nome')+'</strong><span>'+esc('Nascimento '+birth+' · '+ids)+'</span></div>'+
+    '<span class="unmatched-badge">Não localizado</span>'+
+  '</div>';
+}
+
+function renderUnmatched(){
+  const panel=$('#unmatchedPanel');
+  const list=$('#unmatchedList');
+  if(!panel||!list)return;
+
+  if(!state.territoryBase||!state.followupBase){
+    panel.hidden=true;
+    list.innerHTML='';
+    return;
+  }
+
+  const outside=state.followupOnlyPeople||[];
+  const conflicts=state.inconsistencies.filter(item=>item.type==='id-conflict');
+  panel.hidden=!outside.length&&!conflicts.length;
+
+  const outsideHtml=outside.length
+    ? outside.slice(0,100).map(unmatchedRow).join('')
+    : '<div class="empty-state">Nenhum registro de Acompanhamentos ficou fora do Território.</div>';
+
+  const conflictHtml=conflicts.length
+    ? '<div class="data-note"><strong>Conferir identificadores:</strong> '+formatNumber(conflicts.length)+' registro(s) com CPF/CNS divergente entre as bases.</div>'
+    : '';
+
+  list.innerHTML=outsideHtml+conflictHtml+
+    (outside.length>100?'<p class="muted">Exibindo os primeiros 100 de '+formatNumber(outside.length)+' registros.</p>':'');
+}
+
 function formatItem(label,value){
   return '<div class="format-item"><b>'+esc(label)+'</b><span>'+esc(value||'—')+'</span></div>';
 }
@@ -293,8 +357,8 @@ function renderFormatInfo(){
   const territory=state.territoryBase;
   const followup=state.followupBase;
   $('#formatInfo').innerHTML=
-    formatItem('Território',territory?territory.encoding+' · '+territory.data.length+' registros':'—')+
-    formatItem('Acompanhamentos',followup?followup.encoding+' · '+followup.data.length+' registros':'—')+
+    formatItem('Território',territory?territory.encoding+' · '+(territory.meta?.recordsRead??territory.data.length)+' lidos · '+territory.data.length+' válidos':'—')+
+    formatItem('Acompanhamentos',followup?followup.encoding+' · '+(followup.meta?.recordsRead??followup.data.length)+' lidos · '+followup.data.length+' válidos':'—')+
     formatItem('Data da base',followup?.meta?.generatedAt||territory?.meta?.generatedAt||'—')+
     formatItem('Visita domiciliar',followup?.meta?.hasVisitElapsed?'Dias/meses encontrados':'Aguardando base');
 }
@@ -437,7 +501,7 @@ function init(){
       reloading=true;
       window.location.reload();
     });
-    navigator.serviceWorker.register('./sw.js?v=9',{updateViaCache:'none'})
+    navigator.serviceWorker.register('./sw.js?v=10',{updateViaCache:'none'})
       .then(registration=>registration.update())
       .catch(()=>{});
   }
